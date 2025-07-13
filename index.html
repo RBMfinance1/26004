@@ -1,0 +1,2253 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Matrice Contrôle Qualité - Booking</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script type="module">
+    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
+
+    let codeReader = null;
+    let isScanning = false;
+
+    // Exposer BrowserMultiFormatReader et les variables globalement
+    window.BrowserMultiFormatReader = BrowserMultiFormatReader;
+    window.isScanning = false;
+    window.isEanScanning = false;
+
+    // Scanner via flux vidéo en temps réel
+    window.startCamera = async function() {
+      const video = document.getElementById('video');
+      const scanButton = document.getElementById('scanButton');
+      const stopButton = document.getElementById('stopButton');
+      
+      try {
+        // Arrêter toute session précédente
+        if (codeReader) {
+          codeReader.reset();
+        }
+        
+        codeReader = new BrowserMultiFormatReader();
+        const constraints = {
+          video: {
+            facingMode: 'environment', // Caméra arrière
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+        
+        await codeReader.decodeFromConstraints(constraints, video, (result, err) => {
+          if (result && window.isScanning) {
+            document.getElementById("barcodeInput").value = result.text;
+            stopCamera();
+            findProduct();
+            // Vibration si supportée
+            if (navigator.vibrate) {
+              navigator.vibrate(200);
+            }
+          }
+        });
+        
+        window.isScanning = true;
+        video.style.display = 'block';
+        scanButton.style.display = 'none';
+        stopButton.style.display = 'inline-block';
+        document.getElementById('scannerContainer').style.display = 'block';
+        
+      } catch (err) {
+        console.error('Erreur caméra:', err);
+        alert('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
+        resetCameraButtons();
+      }
+    };
+
+    window.stopCamera = function() {
+      window.isScanning = false;
+      
+      // Arrêter le flux vidéo
+      const video = document.getElementById('video');
+      if (video && video.srcObject) {
+        const stream = video.srcObject;
+        if (stream) {
+          stream.getTracks().forEach(track => {
+            track.stop();
+            console.log('Track arrêté:', track.kind);
+          });
+          video.srcObject = null;
+        }
+      }
+      
+      // Arrêter le code reader
+      if (codeReader) {
+        try {
+          codeReader.reset();
+        } catch (e) {
+          console.log('Erreur lors de l\'arrêt de la caméra:', e);
+        }
+        codeReader = null;
+      }
+      
+      resetCameraButtons();
+    };
+
+    function resetCameraButtons() {
+      const video = document.getElementById('video');
+      if (video) {
+        video.style.display = 'none';
+        // S'assurer que le flux est bien coupé
+        if (video.srcObject) {
+          video.srcObject = null;
+        }
+      }
+      
+      document.getElementById('scanButton').style.display = 'inline-block';
+      document.getElementById('stopButton').style.display = 'none';
+      document.getElementById('scannerContainer').style.display = 'none';
+    }
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      margin: 0;
+      padding: 10px;
+      color: #2c3e50;
+      min-height: 100vh;
+    }
+    
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      max-width: 100%;
+      margin: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-size: 1.5em;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      background: #f8f9fa;
+    }
+    
+    .section h3 {
+      margin: 0 0 15px 0;
+      color: #495057;
+      font-size: 1.1em;
+    }
+    
+    .section.active {
+      border-color: #667eea;
+      background: #f0f3ff;
+    }
+    
+    .section.completed {
+      border-color: #28a745;
+      background: #f0fff4;
+    }
+    
+    input[type="file"], input[type="text"], select {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    
+    button {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border: none;
+      color: white;
+      padding: 12px 20px;
+      margin: 5px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      min-height: 44px;
+    }
+    
+    button:active {
+      transform: scale(0.98);
+    }
+    
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    
+    .button-row button {
+      flex: 1;
+      min-width: 120px;
+    }
+    
+    #scannerContainer {
+      display: none;
+      text-align: center;
+      margin: 15px 0;
+    }
+    
+    #video {
+      width: 100%;
+      max-width: 400px;
+      height: 300px;
+      border: 2px solid #667eea;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+    
+    #eanVideo {
+      width: 100%;
+      max-width: 400px;
+      height: 300px;
+      border: 2px solid #667eea;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+    
+    .scanner-overlay {
+      position: relative;
+      display: inline-block;
+    }
+    
+    .scanner-frame {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 250px;
+      height: 150px;
+      border: 2px solid #00ff00;
+      border-radius: 10px;
+      pointer-events: none;
+    }
+    
+    .scanner-corners {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #00ff00;
+    }
+    
+    .corner-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
+    .corner-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
+    .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+    
+    #results, #productListContainer, #qualityControlSection {
+      margin-top: 15px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      background: #f8f9fa;
+    }
+    
+    .item {
+      padding: 12px;
+      border-bottom: 1px solid #ccc;
+      line-height: 1.4;
+    }
+    
+    .item:last-child {
+      border-bottom: none;
+    }
+    
+    .item strong {
+      color: #667eea;
+      font-size: 1.1em;
+    }
+    
+    #fileStatus, #bookingFileStatus {
+      color: #28a745;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    
+    .scan-instruction {
+      text-align: center;
+      color: #666;
+      font-size: 0.9em;
+      margin: 10px 0;
+    }
+    
+    /* Styles pour la liste de produits */
+    #searchInput, #bookingSearchInput {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+    
+    .product-item, .booking-item {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .product-item:hover, .booking-item:hover {
+      background-color: #e9ecef;
+    }
+    
+    .product-item:last-child, .booking-item:last-child {
+      border-bottom: none;
+    }
+    
+    .product-ref, .booking-ref {
+      font-weight: bold;
+      color: #667eea;
+      font-size: 1.1em;
+    }
+    
+    .product-details, .booking-details {
+      font-size: 0.9em;
+      color: #666;
+      margin-top: 5px;
+    }
+    
+    .no-results {
+      text-align: center;
+      padding: 20px;
+      color: #6c757d;
+      font-style: italic;
+    }
+    
+    /* Styles pour le contrôle qualité */
+    .quality-criterion {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 10px 0;
+    }
+    
+    .criterion-title {
+      font-weight: bold;
+      color: #495057;
+      margin-bottom: 10px;
+      font-size: 1.1em;
+    }
+    
+    .radio-group {
+      display: flex;
+      gap: 20px;
+      margin: 10px 0;
+      align-items: center;
+    }
+    
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    
+    .radio-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+    }
+    
+    .radio-option.ok {
+      color: #28a745;
+      font-weight: bold;
+    }
+    
+    .radio-option.not-ok {
+      color: #dc3545;
+      font-weight: bold;
+    }
+    
+    .radio-option.not-applicable {
+      color: #6c757d;
+      font-weight: bold;
+    }
+    
+    .comment-area {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 60px;
+      margin-top: 10px;
+    }
+    
+    .product-info {
+      background: #e8f4f8;
+      border: 1px solid #bee5eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .product-info h4 {
+      margin: 0 0 10px 0;
+      color: #0c5460;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    /* Styles pour le contrôle EAN */
+    .ean-progress {
+      background: #e8f4f8;
+      border: 1px solid #bee5eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    
+    .ean-progress h4 {
+      margin: 0 0 10px 0;
+      color: #0c5460;
+    }
+    
+    .progress-bar {
+      background: #e9ecef;
+      border-radius: 10px;
+      height: 20px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    
+    .progress-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 10px;
+    }
+    
+    .progress-text {
+      font-weight: bold;
+      color: #495057;
+      margin-top: 5px;
+    }
+    
+    .ean-scanner-section, .ean-list-section {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    
+    .ean-scanner-section h4, .ean-list-section h4 {
+      margin: 0 0 15px 0;
+      color: #495057;
+    }
+    
+    .ean-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      margin: 8px 0;
+      transition: all 0.3s ease;
+    }
+    
+    .ean-item.checked {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+    
+    .ean-item.checked .ean-status {
+      color: #155724;
+    }
+    
+    .ean-details {
+      flex: 1;
+    }
+    
+    .ean-code {
+      font-family: monospace;
+      font-weight: bold;
+      color: #495057;
+      font-size: 1.1em;
+    }
+    
+    .ean-info {
+      font-size: 0.9em;
+      color: #6c757d;
+      margin-top: 3px;
+    }
+    
+    .ean-status {
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 0.9em;
+    }
+    
+    .ean-status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+    
+    .ean-status.found {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .validation-summary {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    
+    .validation-summary.success {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+    
+    .validation-summary.warning {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+    }
+    
+    .validation-summary h4 {
+      margin: 0 0 10px 0;
+    }
+    
+    /* Styles pour les photos */
+    .photo-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      border: 1px solid #e9ecef;
+    }
+    
+    .photo-upload {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .photo-upload input[type="file"] {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    
+    .photo-button {
+      background: #17a2b8;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    
+    .photo-button:hover {
+      background: #138496;
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(23, 162, 184, 0.3);
+    }
+    
+    .photo-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .photo-item {
+      position: relative;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f8f9fa;
+      transition: all 0.3s ease;
+    }
+    
+    .photo-item:hover {
+      border-color: #28a745;
+      transform: scale(1.02);
+    }
+    
+    .photo-item img {
+      width: 100%;
+      height: 100px;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .photo-remove {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: rgba(220, 53, 69, 0.9);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    
+    .photo-remove:hover {
+      background: #dc3545;
+      transform: scale(1.1);
+    }
+    
+    .photo-timestamp {
+      padding: 5px;
+      font-size: 0.7rem;
+      color: #6c757d;
+      text-align: center;
+      background: rgba(248, 249, 250, 0.9);
+    }
+
+    /* Styles pour le booking */
+    .booking-progress {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 10px;
+      padding: 20px;
+      margin: 15px 0;
+      color: white;
+      text-align: center;
+    }
+
+    .booking-progress h4 {
+      margin: 0 0 15px 0;
+      font-size: 1.2em;
+    }
+
+    .booking-progress-bar {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 15px;
+      height: 25px;
+      overflow: hidden;
+      margin: 15px 0;
+    }
+
+    .booking-progress-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.5s ease;
+      border-radius: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 0.9em;
+    }
+
+    .reference-list {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .reference-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px;
+      border: 2px solid #e9ecef;
+      border-radius: 10px;
+      margin: 10px 0;
+      background: #f8f9fa;
+      transition: all 0.3s ease;
+      cursor: move;
+    }
+
+    .reference-item.completed {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+
+    .reference-item.current {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+      box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+    }
+
+    .reference-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .reference-info {
+      flex: 1;
+    }
+
+    .reference-code {
+      font-weight: bold;
+      color: #495057;
+      font-size: 1.1em;
+    }
+
+    .reference-details {
+      font-size: 0.9em;
+      color: #6c757d;
+      margin-top: 5px;
+    }
+
+    .reference-status {
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 0.9em;
+    }
+
+    .reference-status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .reference-status.completed {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .reference-status.current {
+      background: #cce5ff;
+      color: #004085;
+    }
+
+    .booking-selection {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .booking-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+
+    .current-booking-info {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 15px 0;
+      text-align: center;
+    }
+
+    .drag-handle {
+      color: #ccc;
+      cursor: move;
+      font-size: 1.2em;
+      margin-right: 10px;
+    }
+
+    .drag-handle:hover {
+      color: #666;
+    }
+    
+    @media (max-width: 768px) {
+      .container {
+        padding: 15px;
+        margin: 5px;
+      }
+      
+      h1 {
+        font-size: 1.3em;
+      }
+      
+      .section {
+        padding: 12px;
+      }
+      
+      button {
+        padding: 10px 15px;
+        font-size: 13px;
+      }
+      
+      #video {
+        height: 250px;
+      }
+      
+      #eanVideo {
+        height: 250px;
+      }
+      
+      .scanner-frame {
+        width: 200px;
+        height: 120px;
+      }
+      
+      .radio-group {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      
+      .quality-criterion {
+        padding: 12px;
+      }
+
+      .reference-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Matrice Contrôle Qualité - Booking</h1>
+
+    <div class="section completed" id="step1">
+      <h3>1️⃣ Charger la base de données</h3>
+      <div class="button-row">
+        <button onclick="loadOnlineCSV()">🌐 Charger BDD en ligne</button>
+        <button onclick="document.getElementById('csvFile').click()">📁 Charger fichier local</button>
+      </div>
+      <input type="file" id="csvFile" accept=".csv" style="display:none;" onchange="loadCSV()" />
+      <div id="fileStatus"></div>
+    </div>
+
+    <div class="section" id="step2">
+      <h3>2️⃣ Charger le fichier de booking</h3>
+      <div class="button-row">
+        <button onclick="document.getElementById('bookingFile').click()">📊 Charger fichier Excel (.xlsx)</button>
+      </div>
+      <input type="file" id="bookingFile" accept=".xlsx,.xls" style="display:none;" onchange="loadBookingFile()" />
+      <div id="bookingFileStatus"></div>
+    </div>
+
+    <div class="section hidden" id="step3">
+      <h3>3️⃣ Sélectionner un booking</h3>
+      <div class="booking-selection">
+        <h4>🔍 Rechercher un booking</h4>
+        <input type="text" id="bookingSearchInput" placeholder="Rechercher par numéro de booking..." onkeyup="filterBookings()" />
+        <div id="bookingList" class="booking-list"></div>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step4">
+      <h3>4️⃣ Organiser les références du booking</h3>
+      
+      <div class="current-booking-info" id="currentBookingInfo">
+        <!-- Informations du booking sélectionné -->
+      </div>
+
+      <div class="booking-progress" id="bookingProgressSection">
+        <h4>📊 Progression du booking</h4>
+        <div class="booking-progress-bar">
+          <div class="booking-progress-fill" id="bookingProgressFill">0%</div>
+        </div>
+        <div id="bookingProgressText">0 / 0 références contrôlées</div>
+      </div>
+
+      <div class="reference-list">
+        <h4>📋 Références à contrôler</h4>
+        <p><small>🔧 Glisser-déposer pour réorganiser l'ordre de contrôle</small></p>
+        <div id="referencesList"></div>
+      </div>
+
+      <div class="button-row">
+        <button onclick="startBookingControl()" id="startBookingButton">🚀 Commencer le contrôle du booking</button>
+        <button onclick="selectDifferentBooking()" style="background: #6c757d;">🔄 Choisir un autre booking</button>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step5">
+      <h3>5️⃣ Scanner un code-barres</h3>
+      
+      <div class="current-booking-info" id="currentControlInfo">
+        <!-- Informations de contrôle en cours -->
+      </div>
+
+      <div class="button-row">
+        <button id="scanButton" onclick="startCamera()">📷 Scanner en direct</button>
+        <button id="stopButton" onclick="stopCamera()" style="display:none;">⏹️ Arrêter</button>
+        <button onclick="showProductList()">📋 Choisir dans la liste</button>
+      </div>
+      
+      <div id="scannerContainer">
+        <div class="scanner-overlay">
+          <video id="video" playsinline></video>
+          <div class="scanner-frame">
+            <div class="scanner-corners corner-tl"></div>
+            <div class="scanner-corners corner-tr"></div>
+            <div class="scanner-corners corner-bl"></div>
+            <div class="scanner-corners corner-br"></div>
+          </div>
+        </div>
+        <div class="scan-instruction">Placez le code-barres dans le cadre</div>
+      </div>
+      
+      <div id="productListContainer" style="display:none;">
+        <h4>🔍 Rechercher une référence</h4>
+        <input type="text" id="searchInput" placeholder="Rechercher par référence, code, marque..." onkeyup="filterProducts()" />
+        <div id="productList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; margin: 10px 0;"></div>
+        <button onclick="hideProductList()" style="background: #6c757d;">❌ Fermer la liste</button>
+      </div>
+      
+      <label>⌨️ Ou saisir manuellement :</label>
+      <input type="text" id="barcodeInput" placeholder="Entrer un code EAN..." />
+      <button onclick="findProduct()">🔍 Rechercher</button>
+    </div>
+
+    <div id="results" style="display:none;"></div>
+
+    <div class="section hidden" id="step6">
+      <h3>6️⃣ Contrôle Qualité - Carton</h3>
+      
+      <div class="product-info" id="selectedProductInfo">
+        <!-- Informations du produit sélectionné -->
+      </div>
+
+      <div id="qualityControlSection">
+        
+        <!-- Shipping Mark -->
+        <div class="quality-criterion">
+          <div class="criterion-title">📦 Shipping Mark</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="shipping_mark" value="ok" onchange="updatePackageQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="shipping_mark" value="not_ok" onchange="updatePackageQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_shipping_mark" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_shipping_mark" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('shipping_mark')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_shipping_mark"></div>
+          </div>
+        </div>
+
+        <!-- Etat du colis -->
+        <div class="quality-criterion">
+          <div class="criterion-title">📋 Etat du colis</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="package_condition" value="ok" onchange="updatePackageQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="package_condition" value="not_ok" onchange="updatePackageQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_package_condition" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_package_condition" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('package_condition')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_package_condition"></div>
+          </div>
+        </div>
+
+        <!-- Bande de garantie -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🔒 Bande de garantie</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="warranty_seal" value="ok" onchange="updatePackageQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="warranty_seal" value="not_ok" onchange="updatePackageQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_warranty_seal" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_warranty_seal" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('warranty_seal')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_warranty_seal"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="button-row">
+        <button onclick="proceedToProductControl()" id="packageValidateButton" disabled>➡️ Contrôler le produit</button>
+        <button onclick="skipToNextReference()" style="background: #ffc107; color: #000;">⏭️ Référence suivante</button>
+        <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step7">
+      <h3>7️⃣ Contrôle Qualité - Produit</h3>
+      
+      <div class="product-info" id="productControlInfo">
+        <!-- Informations du produit sélectionné -->
+      </div>
+
+      <div id="productQualityControlSection">
+        
+        <!-- Test du zip -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🤐 Vérification zip </div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="zip_test" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="zip_test" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="zip_test" value="not_applicable" onchange="updateProductQualityStatus()">
+              ➖ Non applicable
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_zip_test" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_zip_test" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('zip_test')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_zip_test"></div>
+          </div>
+        </div>
+
+        <!-- Vérification boutonnage -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🔘 Vérification boutonnage</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="button_check" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="button_check" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="button_check" value="not_applicable" onchange="updateProductQualityStatus()">
+              ➖ Non applicable
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_button_check" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_button_check" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('button_check')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_button_check"></div>
+          </div>
+        </div>
+
+        <!-- Contrôle Coloris -->
+        <div class="quality-criterion">
+          <div class="criterion-title">🎨 Vérification Coloris</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="color_check" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="color_check" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_color_check" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_color_check" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('color_check')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_color_check"></div>
+          </div>
+        </div>
+
+        <!-- Vérification finition/coutures -->
+        <div class="quality-criterion">
+          <div class="criterion-title">✂️ Vérification finition/coutures</div>
+          <div class="radio-group">
+            <label class="radio-option ok">
+              <input type="radio" name="finishing_check" value="ok" onchange="updateProductQualityStatus()">
+              ✅ OK
+            </label>
+            <label class="radio-option not-ok">
+              <input type="radio" name="finishing_check" value="not_ok" onchange="updateProductQualityStatus()">
+              ❌ PAS OK
+            </label>
+          </div>
+          <textarea class="comment-area" id="comment_finishing_check" placeholder="Commentaire (optionnel)..."></textarea>
+          <div class="photo-section">
+            <div class="photo-upload">
+              <input type="file" id="photoInput_finishing_check" accept="image/*" multiple>
+              <button class="photo-button" onclick="addPhotos('finishing_check')">📷 Ajouter Photos</button>
+            </div>
+            <div class="photo-preview" id="photos_finishing_check"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="button-row">
+        <button onclick="proceedToEanControl()" id="productValidateButton" disabled>➡️ Contrôler les EAN de la référence</button>
+        <button onclick="goBackToPackageControl()" style="background: #ffc107; color: #000;">⬅️ Retour carton</button>
+        <button onclick="skipToNextReference()" style="background: #ff6b6b; color: white;">⏭️ Référence suivante</button>
+        <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step8">
+      <h3>8️⃣ Contrôle EAN - Référence</h3>
+      
+      <div class="product-info" id="eanControlInfo">
+        <!-- Informations de la référence à contrôler -->
+      </div>
+
+      <div id="eanControlSection">
+        <div class="ean-progress">
+          <h4>📊 Progression du contrôle</h4>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-text" id="progressText">0 / 0 EAN contrôlés</div>
+        </div>
+
+        <div class="ean-scanner-section">
+          <h4>🔍 Scanner les EAN de la référence</h4>
+          <div class="button-row">
+            <button id="eanScanButton" onclick="startEanScanner()">📷 Scanner EAN</button>
+            <button id="eanStopButton" onclick="stopEanScanner()" style="display:none;">⏹️ Arrêter</button>
+          </div>
+          
+          <div id="eanScannerContainer" style="display:none;">
+            <div class="scanner-overlay">
+              <video id="eanVideo" playsinline></video>
+              <div class="scanner-frame">
+                <div class="scanner-corners corner-tl"></div>
+                <div class="scanner-corners corner-tr"></div>
+                <div class="scanner-corners corner-bl"></div>
+                <div class="scanner-corners corner-br"></div>
+              </div>
+            </div>
+            <div class="scan-instruction">Scanner les codes-barres de la référence</div>
+          </div>
+          
+          <label>⌨️ Ou saisir manuellement :</label>
+          <input type="text" id="eanInput" placeholder="Scanner ou saisir un EAN de la référence..." />
+          <button onclick="checkEanForReference()">🔍 Vérifier EAN</button>
+        </div>
+
+        <div class="ean-list-section">
+          <h4>📋 Liste des EAN à contrôler</h4>
+          <div id="eanList"></div>
+        </div>
+
+        <div id="eanValidationResult" style="display:none;"></div>
+      </div>
+
+      <div class="button-row">
+        <button onclick="completeCurrentReference()" id="completeReferenceButton" style="background: #28a745;">✅ Terminer cette référence</button>
+        <button onclick="goBackToProductControl()" style="background: #ffc107; color: #000;">⬅️ Retour produit</button>
+        <button onclick="skipToNextReference()" style="background: #ff6b6b; color: white;">⏭️ Référence suivante</button>
+        <button onclick="resetQualityControl()" style="background: #6c757d;">🔄 Recommencer</button>
+      </div>
+    </div>
+
+    <div class="section hidden" id="step9">
+      <h3>9️⃣ Rapports</h3>
+      
+      <div class="current-booking-info" id="reportsBookingInfo">
+        <!-- Informations du booking terminé -->
+      </div>
+
+      <div class="button-row">
+        <button onclick="generateIndividualReports()" style="background: #17a2b8;">📄 Rapports individuels (par référence)</button>
+        <button onclick="generateGlobalBookingReport()" style="background: #dc3545;">📊 Rapport global du booking</button>
+        <button onclick="startNewBooking()" style="background: #28a745;">🆕 Nouveau booking</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Configuration des colonnes (à modifier selon vos besoins)
+    const BOOKING_COL_CODE_ARTICLE = 8;  // Colonne 8 pour le code article (index 8)
+    const BOOKING_COL_BOOKING_NUMBER = 14; // Colonne 14 pour le numéro de booking (index 14)
+
+    // Variables existantes
+    let database = [];
+    let currentProduct = null;
+    let packageQualityResults = {};
+    let productQualityResults = {};
+    let currentReference = null;
+    let referenceEanList = [];
+    let checkedEans = new Set();
+    let nonTestedEans = new Set();
+    let eanCodeReader = null;
+    let criterionPhotos = {};
+
+    // Nouvelles variables pour le booking
+    let bookingData = [];
+    let availableBookings = [];
+    let currentBooking = null;
+    let bookingReferences = [];
+    let currentReferenceIndex = 0;
+    let completedReferences = new Set();
+    let bookingQualityResults = {}; // Stockage de tous les résultats du booking
+
+    // Constantes pour la BDD.csv (existantes)
+    const COL_REF = 0;
+    const COL_CODE = 1;
+    const COL_COULEUR = 2;
+    const COL_TAILLE = 4;
+    const COL_MARQUE = 7;
+    const COL_EAN = 10;
+
+    function loadCSV() {
+      const file = document.getElementById('csvFile').files[0];
+      if (!file) return alert("⚠️ Sélectionnez un fichier CSV.");
+      
+      Papa.parse(file, {
+        header: false,
+        delimiter: ";",
+        skipEmptyLines: true,
+        complete: results => {
+          database = results.data.slice(1);
+          document.getElementById("fileStatus").innerHTML = 
+            `✅ ${database.length} articles chargés avec succès`;
+          document.getElementById('step1').classList.add('completed');
+          document.getElementById('step2').classList.add('active');
+        },
+        error: (error) => {
+          alert("❌ Erreur lors du chargement du fichier CSV");
+          console.error(error);
+        }
+      });
+    }
+
+    function loadOnlineCSV() {
+      document.getElementById("fileStatus").innerHTML = "⏳ Chargement de la base de données en ligne...";
+      
+      const alternativeUrls = [
+        'https://cdn.jsdelivr.net/gh/rbmfinance1/26002@gh-pages/bdd.csv',
+        'https://raw.githubusercontent.com/rbmfinance1/26002/gh-pages/bdd.csv',
+        'https://rbmfinance1.github.io/26002/bdd.csv'
+      ];
+      
+      async function tryUrls(urlIndex = 0) {
+        if (urlIndex >= alternativeUrls.length) {
+          console.log('Toutes les sources ont échoué');
+          showManualDownloadOption();
+          return;
+        }
+        
+        const currentUrl = alternativeUrls[urlIndex];
+        console.log(`Tentative ${urlIndex + 1}:`, currentUrl);
+        
+        try {
+          const response = await fetch(currentUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: {
+              'Accept': 'text/csv,text/plain,*/*'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const csvData = await response.text();
+          
+          if (csvData.includes('<!DOCTYPE') || csvData.includes('<html>')) {
+            throw new Error('Contenu HTML reçu au lieu de CSV');
+          }
+          
+          if (csvData.trim().length < 10) {
+            throw new Error('Fichier CSV vide ou trop court');
+          }
+          
+          console.log('✅ Chargement réussi avec:', currentUrl);
+          processCsvData(csvData);
+          
+        } catch (error) {
+          console.log(`Source ${urlIndex + 1} échouée:`, error.message);
+          tryUrls(urlIndex + 1);
+        }
+      }
+      
+      tryUrls(0);
+    }
+
+    function showManualDownloadOption() {
+      document.getElementById("fileStatus").innerHTML = 
+        `<div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <strong>📥 Téléchargement manuel requis</strong><br/><br/>
+          <div style="margin: 10px 0;">
+            <a href="https://rbmfinance1.github.io/26002/bdd.csv" 
+               download="bdd.csv" 
+               style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
+              📥 Télécharger bdd.csv
+            </a>
+          </div>
+          <small style="color: #856404;">
+            1. Cliquez sur le lien ci-dessus pour télécharger<br/>
+            2. Une fois téléchargé, utilisez "📁 Charger fichier local"<br/>
+            3. Sélectionnez le fichier bdd.csv téléchargé
+          </small>
+        </div>`;
+    }
+
+    function processCsvData(csvData) {
+      try {
+        Papa.parse(csvData, {
+          header: false,
+          delimiter: ";",
+          skipEmptyLines: true,
+          complete: results => {
+            if (results.data && results.data.length > 1) {
+              database = results.data.slice(1);
+              document.getElementById("fileStatus").innerHTML = 
+                `✅ ${database.length} articles chargés depuis la base en ligne`;
+              document.getElementById('step1').classList.add('completed');
+              document.getElementById('step2').classList.add('active');
+            } else {
+              throw new Error('Fichier CSV vide ou invalide');
+            }
+          },
+          error: (error) => {
+            console.error('Erreur Papa Parse:', error);
+            document.getElementById("fileStatus").innerHTML = 
+              "❌ Erreur lors du traitement du fichier CSV";
+          }
+        });
+      } catch (error) {
+        console.error('Erreur de traitement CSV:', error);
+        document.getElementById("fileStatus").innerHTML = 
+          "❌ Erreur lors du traitement des données";
+      }
+    }
+
+    // Nouvelle fonction pour charger le fichier Excel de booking
+    function loadBookingFile() {
+      const file = document.getElementById('bookingFile').files[0];
+      if (!file) return alert("⚠️ Sélectionnez un fichier Excel.");
+      
+      if (database.length === 0) {
+        alert("⚠️ Veuillez d'abord charger la base de données CSV.");
+        return;
+      }
+
+      document.getElementById("bookingFileStatus").innerHTML = "⏳ Chargement du fichier de booking...";
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          
+          // Prendre la première feuille
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          
+          // Convertir en JSON (avec en-têtes)
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          
+          if (jsonData.length < 2) {
+            throw new Error('Fichier Excel vide ou invalide');
+          }
+          
+          // Supprimer la ligne d'en-tête et stocker les données
+          bookingData = jsonData.slice(1);
+          
+          // Extraire les bookings uniques
+          extractBookings();
+          
+          document.getElementById("bookingFileStatus").innerHTML = 
+            `✅ ${bookingData.length} lignes chargées - ${availableBookings.length} bookings trouvés`;
+          
+          document.getElementById('step2').classList.add('completed');
+          document.getElementById('step3').classList.remove('hidden');
+          document.getElementById('step3').classList.add('active');
+          
+          // Afficher la liste des bookings
+          displayBookings();
+          
+        } catch (error) {
+          console.error('Erreur lecture Excel:', error);
+          document.getElementById("bookingFileStatus").innerHTML = 
+            "❌ Erreur lors de la lecture du fichier Excel: " + error.message;
+        }
+      };
+      
+      reader.onerror = function() {
+        document.getElementById("bookingFileStatus").innerHTML = 
+          "❌ Erreur lors de la lecture du fichier";
+      };
+      
+      reader.readAsArrayBuffer(file);
+    }
+
+    function extractBookings() {
+      const bookingsSet = new Set();
+      const bookingsWithCounts = {};
+      
+      bookingData.forEach(row => {
+        const bookingNumber = row[BOOKING_COL_BOOKING_NUMBER];
+        const codeArticle = row[BOOKING_COL_CODE_ARTICLE];
+        
+        if (bookingNumber && codeArticle) {
+          const bookingStr = String(bookingNumber).trim();
+          bookingsSet.add(bookingStr);
+          
+          if (!bookingsWithCounts[bookingStr]) {
+            bookingsWithCounts[bookingStr] = new Set();
+          }
+          bookingsWithCounts[bookingStr].add(String(codeArticle).trim());
+        }
+      });
+      
+      availableBookings = Array.from(bookingsSet).map(booking => ({
+        number: booking,
+        referenceCount: bookingsWithCounts[booking].size,
+        references: Array.from(bookingsWithCounts[booking])
+      })).sort((a, b) => a.number.localeCompare(b.number));
+      
+      console.log('Bookings extraits:', availableBookings);
+    }
+
+    function displayBookings() {
+      const bookingList = document.getElementById('bookingList');
+      
+      if (availableBookings.length === 0) {
+        bookingList.innerHTML = '<div class="no-results">Aucun booking trouvé</div>';
+        return;
+      }
+      
+      bookingList.innerHTML = availableBookings.map(booking => 
+        `<div class="booking-item" onclick="selectBooking('${booking.number}')">
+          <div class="booking-ref">${booking.number}</div>
+          <div class="booking-details">
+            ${booking.referenceCount} référence${booking.referenceCount > 1 ? 's' : ''} à contrôler
+          </div>
+        </div>`
+      ).join('');
+    }
+
+    function filterBookings() {
+      const searchTerm = document.getElementById('bookingSearchInput').value.toLowerCase();
+      
+      if (searchTerm === '') {
+        displayBookings();
+        return;
+      }
+      
+      const filteredBookings = availableBookings.filter(booking => 
+        booking.number.toLowerCase().includes(searchTerm)
+      );
+      
+      const bookingList = document.getElementById('bookingList');
+      
+      if (filteredBookings.length === 0) {
+        bookingList.innerHTML = '<div class="no-results">Aucun booking trouvé</div>';
+        return;
+      }
+      
+      bookingList.innerHTML = filteredBookings.map(booking => 
+        `<div class="booking-item" onclick="selectBooking('${booking.number}')">
+          <div class="booking-ref">${booking.number}</div>
+          <div class="booking-details">
+            ${booking.referenceCount} référence${booking.referenceCount > 1 ? 's' : ''} à contrôler
+          </div>
+        </div>`
+      ).join('');
+    }
+
+    function selectBooking(bookingNumber) {
+      currentBooking = availableBookings.find(b => b.number === bookingNumber);
+      if (!currentBooking) {
+        alert("❌ Booking introuvable");
+        return;
+      }
+      
+      // Extraire les références de ce booking depuis la BDD
+      extractBookingReferences();
+      
+      // Afficher les informations du booking
+      document.getElementById("currentBookingInfo").innerHTML = `
+        <h4>📋 Booking sélectionné : ${currentBooking.number}</h4>
+        <strong>Références à contrôler :</strong> ${bookingReferences.length}<br/>
+        <strong>Statut :</strong> Prêt pour le contrôle
+      `;
+      
+      // Passer à l'étape suivante
+      document.getElementById('step3').classList.remove('active');
+      document.getElementById('step3').classList.add('completed');
+      document.getElementById('step4').classList.remove('hidden');
+      document.getElementById('step4').classList.add('active');
+      
+      // Afficher les références
+      displayBookingReferences();
+      updateBookingProgress();
+      
+      // Scroll vers la section
+      document.getElementById('step4').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function extractBookingReferences() {
+      const codesArticles = bookingData
+        .filter(row => String(row[BOOKING_COL_BOOKING_NUMBER]).trim() === currentBooking.number)
+        .map(row => String(row[BOOKING_COL_CODE_ARTICLE]).trim())
+        .filter(code => code);
+      
+      // Trouver les références correspondantes dans la BDD
+      bookingReferences = [];
+      const uniqueRefs = new Set();
+      
+      codesArticles.forEach(codeArticle => {
+        const matchingItems = database.filter(item => item[COL_CODE] === codeArticle);
+        matchingItems.forEach(item => {
+          const ref = item[COL_REF];
+          if (ref && !uniqueRefs.has(ref)) {
+            uniqueRefs.add(ref);
+            bookingReferences.push({
+              reference: ref,
+              codeArticle: codeArticle,
+              marque: item[COL_MARQUE],
+              items: database.filter(dbItem => dbItem[COL_REF] === ref)
+            });
+          }
+        });
+      });
+      
+      // Réinitialiser les index et statuts
+      currentReferenceIndex = 0;
+      completedReferences.clear();
+      bookingQualityResults = {};
+      
+      console.log('Références du booking:', bookingReferences);
+    }
+
+    function displayBookingReferences() {
+      const referencesList = document.getElementById('referencesList');
+      
+      if (bookingReferences.length === 0) {
+        referencesList.innerHTML = '<div class="no-results">Aucune référence trouvée pour ce booking</div>';
+        return;
+      }
+      
+      referencesList.innerHTML = bookingReferences.map((ref, index) => {
+        const isCompleted = completedReferences.has(ref.reference);
+        const isCurrent = index === currentReferenceIndex;
+        
+        let statusClass = 'pending';
+        let statusText = 'En attente';
+        
+        if (isCompleted) {
+          statusClass = 'completed';
+          statusText = 'Terminé ✅';
+        } else if (isCurrent) {
+          statusClass = 'current';
+          statusText = 'En cours 🔄';
+        }
+        
+        return `
+          <div class="reference-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}" 
+               data-index="${index}" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">
+            <div class="drag-handle">⋮⋮</div>
+            <div class="reference-info">
+              <div class="reference-code">${ref.reference}</div>
+              <div class="reference-details">
+                Code: ${ref.codeArticle} | Marque: ${ref.marque} | ${ref.items.length} variante${ref.items.length > 1 ? 's' : ''}
+              </div>
+            </div>
+            <div class="reference-status ${statusClass}">${statusText}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Fonctions de drag & drop pour réorganiser les références
+    function dragStart(e) {
+      e.dataTransfer.setData("text/plain", e.target.dataset.index);
+    }
+
+    function dragOver(e) {
+      e.preventDefault();
+    }
+
+    function drop(e) {
+      e.preventDefault();
+      const fromIndex = parseInt(e.dataTransfer.getData("text/plain"));
+      const toIndex = parseInt(e.target.closest('.reference-item').dataset.index);
+      
+      if (fromIndex !== toIndex) {
+        // Réorganiser le tableau
+        const item = bookingReferences.splice(fromIndex, 1)[0];
+        bookingReferences.splice(toIndex, 0, item);
+        
+        // Ajuster l'index courant
+        if (currentReferenceIndex === fromIndex) {
+          currentReferenceIndex = toIndex;
+        } else if (fromIndex < currentReferenceIndex && toIndex >= currentReferenceIndex) {
+          currentReferenceIndex--;
+        } else if (fromIndex > currentReferenceIndex && toIndex <= currentReferenceIndex) {
+          currentReferenceIndex++;
+        }
+        
+        // Réafficher
+        displayBookingReferences();
+      }
+    }
+
+    function updateBookingProgress() {
+      const total = bookingReferences.length;
+      const completed = completedReferences.size;
+      const percentage = total > 0 ? (completed / total) * 100 : 0;
+      
+      document.getElementById('bookingProgressFill').style.width = percentage + '%';
+      document.getElementById('bookingProgressFill').textContent = Math.round(percentage) + '%';
+      document.getElementById('bookingProgressText').textContent = 
+        `${completed} / ${total} références contrôlées`;
+    }
+
+    function startBookingControl() {
+      if (bookingReferences.length === 0) {
+        alert("❌ Aucune référence à contrôler dans ce booking");
+        return;
+      }
+      
+      // Passer à l'étape de scan
+      document.getElementById('step4').classList.remove('active');
+      document.getElementById('step4').classList.add('completed');
+      document.getElementById('step5').classList.remove('hidden');
+      document.getElementById('step5').classList.add('active');
+      
+      // Mettre à jour les informations de contrôle
+      updateCurrentControlInfo();
+      
+      // Scroll vers la section
+      document.getElementById('step5').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function updateCurrentControlInfo() {
+      const currentRef = bookingReferences[currentReferenceIndex];
+      if (!currentRef) return;
+      
+      document.getElementById("currentControlInfo").innerHTML = `
+        <h4>🔍 Contrôle en cours</h4>
+        <strong>Booking :</strong> ${currentBooking.number} | 
+        <strong>Référence :</strong> ${currentRef.reference} (${currentReferenceIndex + 1}/${bookingReferences.length})<br/>
+        <strong>Code :</strong> ${currentRef.codeArticle} | 
+        <strong>Marque :</strong> ${currentRef.marque}
+      `;
+    }
+
+    function selectDifferentBooking() {
+      // Retourner à la sélection de booking
+      document.getElementById('step4').classList.remove('active');
+      document.getElementById('step4').classList.add('hidden');
+      document.getElementById('step3').classList.add('active');
+      document.getElementById('step3').classList.remove('completed');
+      
+      // Réinitialiser
+      currentBooking = null;
+      bookingReferences = [];
+      currentReferenceIndex = 0;
+      completedReferences.clear();
+      
+      // Scroll vers la section
+      document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Fonctions modifiées pour la recherche de produit dans le contexte booking
+    function findProduct() {
+      // Arrêter les scanners actifs
+      if (window.isScanning) stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      const code = document.getElementById("barcodeInput").value.trim();
+      if (!code) {
+        alert("⚠️ Veuillez entrer un code EAN");
+        return;
+      }
+      
+      if (database.length === 0) {
+        alert("⚠️ Veuillez d'abord charger un fichier CSV");
+        return;
+      }
+      
+      // Vérifier si nous sommes en mode booking
+      if (currentBooking && bookingReferences.length > 0) {
+        const currentRef = bookingReferences[currentReferenceIndex];
+        if (currentRef) {
+          // Vérifier que le produit scanné appartient à la référence en cours
+          const result = currentRef.items.find(item => item[COL_EAN] === code);
+          
+          if (result) {
+            proceedWithProduct(result);
+          } else {
+            // Vérifier si ce produit appartient à une autre référence du booking
+            const otherRefProduct = database.find(item => item[COL_EAN] === code);
+            if (otherRefProduct) {
+              const belongsToBooking = bookingReferences.some(ref => 
+                ref.items.some(item => item[COL_EAN] === code)
+              );
+              
+              if (belongsToBooking) {
+                alert(`❌ Ce produit appartient à une autre référence du booking.\n\nRéférence attendue: ${currentRef.reference}\nRéférence du produit: ${otherRefProduct[COL_REF]}\n\nTerminez d'abord la référence en cours ou réorganisez l'ordre.`);
+              } else {
+                alert(`❌ Ce produit n'appartient pas au booking ${currentBooking.number}.\n\nRéférence du produit: ${otherRefProduct[COL_REF]}`);
+              }
+            } else {
+              alert("❌ Code EAN non trouvé dans la base de données");
+            }
+          }
+        }
+      } else {
+        // Mode normal (sans booking)
+        const result = database.find(row => row[COL_EAN] === code);
+        if (result) {
+          proceedWithProduct(result);
+        } else {
+          const rd = document.getElementById("results");
+          rd.style.display = "block";
+          rd.innerHTML = `
+            <div class="item">
+              <strong>❌ Aucun article trouvé</strong><br/>
+              Code EAN recherché : <strong>${code}</strong><br/>
+              Vérifiez le code ou la base de données.<br/><br/>
+              <button onclick="startCamera()">📷 Essayer avec la caméra</button>
+            </div>`;
+          rd.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+    }
+
+    function proceedWithProduct(result) {
+      currentProduct = result;
+      const rd = document.getElementById("results");
+      rd.style.display = "block";
+      rd.innerHTML = `
+        <div class="item">
+          <strong>✅ Article trouvé !</strong><br/><br/>
+          <strong>Réf :</strong> ${result[COL_REF] || 'N/A'}<br/>
+          <strong>Code Article :</strong> ${result[COL_CODE] || 'N/A'}<br/>
+          <strong>Marque :</strong> ${result[COL_MARQUE] || 'N/A'}<br/>
+          <strong>Couleur :</strong> ${result[COL_COULEUR] || 'N/A'}<br/>
+          <strong>Taille :</strong> ${result[COL_TAILLE] || 'N/A'}<br/>
+          <strong>EAN :</strong> ${result[COL_EAN] || 'N/A'}<br/><br/>
+          <button onclick='startQualityControl()'>🔍 Commencer le contrôle qualité</button>
+        </div>`;
+      rd.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function showProductList() {
+      // Arrêter les scanners actifs
+      if (window.isScanning) stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      if (database.length === 0) {
+        alert("⚠️ Veuillez d'abord charger un fichier CSV");
+        return;
+      }
+      
+      // Utiliser les produits de la référence courante si en mode booking
+      let productsToShow = database;
+      if (currentBooking && bookingReferences.length > 0) {
+        const currentRef = bookingReferences[currentReferenceIndex];
+        if (currentRef) {
+          productsToShow = currentRef.items;
+        }
+      }
+      
+      document.getElementById('productListContainer').style.display = 'block';
+      document.getElementById('searchInput').value = '';
+      displayProducts(productsToShow);
+      
+      document.getElementById('productListContainer').scrollIntoView({ behavior: 'smooth' });
+      
+      setTimeout(() => {
+        document.getElementById('searchInput').focus();
+      }, 300);
+    }
+
+    function hideProductList() {
+      document.getElementById('productListContainer').style.display = 'none';
+    }
+
+    function displayProducts(products) {
+      const productList = document.getElementById('productList');
+      
+      if (products.length === 0) {
+        productList.innerHTML = '<div class="no-results">Aucun produit trouvé</div>';
+        return;
+      }
+      
+      productList.innerHTML = products.slice(0, 100).map((item, index) => 
+        `<div class="product-item" onclick="selectProduct(${products === database ? database.indexOf(item) : index}, ${products !== database})">
+          <div class="product-ref">${item[COL_REF] || 'N/A'}</div>
+          <div class="product-details">
+            ${item[COL_CODE] || 'N/A'} | ${item[COL_MARQUE] || 'N/A'} | 
+            Taille: ${item[COL_TAILLE] || 'N/A'} | Couleur: ${item[COL_COULEUR] || 'N/A'}
+          </div>
+        </div>`
+      ).join('');
+      
+      if (products.length > 100) {
+        productList.innerHTML += '<div class="no-results">... et ' + (products.length - 100) + ' autres résultats. Affinez votre recherche.</div>';
+      }
+    }
+
+    function filterProducts() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      
+      // Utiliser les produits de la référence courante si en mode booking
+      let baseProducts = database;
+      if (currentBooking && bookingReferences.length > 0) {
+        const currentRef = bookingReferences[currentReferenceIndex];
+        if (currentRef) {
+          baseProducts = currentRef.items;
+        }
+      }
+      
+      if (searchTerm === '') {
+        displayProducts(baseProducts);
+        return;
+      }
+      
+      const filteredProducts = baseProducts.filter(item => {
+        const ref = (item[COL_REF] || '').toLowerCase();
+        const code = (item[COL_CODE] || '').toLowerCase();
+        const marque = (item[COL_MARQUE] || '').toLowerCase();
+        const couleur = (item[COL_COULEUR] || '').toLowerCase();
+        const taille = (item[COL_TAILLE] || '').toLowerCase();
+        const ean = (item[COL_EAN] || '').toLowerCase();
+        
+        return ref.includes(searchTerm) || 
+               code.includes(searchTerm) || 
+               marque.includes(searchTerm) || 
+               couleur.includes(searchTerm) || 
+               taille.includes(searchTerm) ||
+               ean.includes(searchTerm);
+      });
+      
+      displayProducts(filteredProducts);
+    }
+
+    function selectProduct(index, isFromCurrentRef = false) {
+      let selectedItem;
+      
+      if (isFromCurrentRef && currentBooking && bookingReferences.length > 0) {
+        const currentRef = bookingReferences[currentReferenceIndex];
+        selectedItem = currentRef.items[index];
+      } else {
+        selectedItem = database[index];
+      }
+      
+      proceedWithProduct(selectedItem);
+      hideProductList();
+      
+      document.getElementById("barcodeInput").value = selectedItem[COL_EAN] || '';
+      
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+    }
+
+    function startQualityControl() {
+      // Arrêter les scanners actifs
+      if (window.isScanning) stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      if (!currentProduct) return;
+
+      // Masquer la section de résultats
+      document.getElementById("results").style.display = "none";
+
+      // Afficher les informations du produit
+      const productInfoHtml = `
+        <h4>📦 Produit à contrôler</h4>
+        <strong>Réf :</strong> ${currentProduct[COL_REF] || 'N/A'} | 
+        <strong>Code :</strong> ${currentProduct[COL_CODE] || 'N/A'} | 
+        <strong>Marque :</strong> ${currentProduct[COL_MARQUE] || 'N/A'}<br/>
+        <strong>Couleur :</strong> ${currentProduct[COL_COULEUR] || 'N/A'} | 
+        <strong>Taille :</strong> ${currentProduct[COL_TAILLE] || 'N/A'} | 
+        <strong>EAN :</strong> ${currentProduct[COL_EAN] || 'N/A'}
+      `;
+      
+      document.getElementById("selectedProductInfo").innerHTML = productInfoHtml;
+
+      // Afficher la section de contrôle qualité carton
+      document.getElementById("step6").classList.remove("hidden");
+      document.getElementById("step6").classList.add("active");
+      document.getElementById("step5").classList.remove("active");
+      document.getElementById("step5").classList.add("completed");
+
+      // Réinitialiser les contrôles
+      resetQualityControls();
+
+      // Scroll vers la section de contrôle
+      document.getElementById("step6").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function resetQualityControls() {
+      // Réinitialiser tous les boutons radio
+      document.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.checked = false;
+      });
+
+      // Vider tous les commentaires
+      document.querySelectorAll('.comment-area').forEach(textarea => {
+        textarea.value = '';
+      });
+
+      // Vider tous les inputs de fichiers
+      document.querySelectorAll('input[type="file"]').forEach(fileInput => {
+        fileInput.value = '';
+      });
+
+      // Réinitialiser les photos
+      criterionPhotos = {};
+      initializePhotoContainers();
+      
+      // Vider tous les conteneurs de photos
+      document.querySelectorAll('.photo-preview').forEach(container => {
+        container.innerHTML = '';
+      });
+
+      // Réinitialiser les objets des résultats
+      packageQualityResults = {};
+      productQualityResults = {};
+
+      // Désactiver les boutons de validation
+      document.getElementById('packageValidateButton').disabled = true;
+      if (document.getElementById('productValidateButton')) {
+        document.getElementById('productValidateButton').disabled = true;
+      }
+    }
+
+    function updatePackageQualityStatus() {
+      // Vérifier si tous les critères du carton sont remplis
+      const shippingMark = document.querySelector('input[name="shipping_mark"]:checked');
+      const packageCondition = document.querySelector('input[name="package_condition"]:checked');
+      const warrantySeal = document.querySelector('input[name="warranty_seal"]:checked');
+
+      // Activer le bouton si tous les critères sont évalués
+      const allChecked = shippingMark && packageCondition && warrantySeal;
+      document.getElementById('packageValidateButton').disabled = !allChecked;
+
+      // Mettre à jour l'objet des résultats du carton
+      if (allChecked) {
+        packageQualityResults = {
+          shipping_mark: {
+            status: shippingMark.value,
+            comment: document.getElementById('comment_shipping_mark').value,
+            photos: criterionPhotos['shipping_mark'] || []
+          },
+          package_condition: {
+            status: packageCondition.value,
+            comment: document.getElementById('comment_package_condition').value,
+            photos: criterionPhotos['package_condition'] || []
+          },
+          warranty_seal: {
+            status: warrantySeal.value,
+            comment: document.getElementById('comment_warranty_seal').value,
+            photos: criterionPhotos['warranty_seal'] || []
+          }
+        };
+      }
+    }
+
+    function updateProductQualityStatus() {
+      // Vérifier si tous les critères du produit sont remplis
+      const zipTest = document.querySelector('input[name="zip_test"]:checked');
+      const buttonCheck = document.querySelector('input[name="button_check"]:checked');
+      const colorCheck = document.querySelector('input[name="color_check"]:checked');
+      const finishingCheck = document.querySelector('input[name="finishing_check"]:checked');
+
+      // Activer le bouton si tous les critères sont évalués
+      const allChecked = zipTest && buttonCheck && colorCheck && finishingCheck;
+      document.getElementById('productValidateButton').disabled = !allChecked;
+
+      // Mettre à jour l'objet des résultats du produit
+      if (allChecked) {
+        productQualityResults = {
+          zip_test: {
+            status: zipTest.value,
+            comment: document.getElementById('comment_zip_test').value,
+            photos: criterionPhotos['zip_test'] || []
+          },
+          button_check: {
+            status: buttonCheck.value,
+            comment: document.getElementById('comment_button_check').value,
+            photos: criterionPhotos['button_check'] || []
+          },
+          color_check: {
+            status: colorCheck.value,
+            comment: document.getElementById('comment_color_check').value,
+            photos: criterionPhotos['color_check'] || []
+          },
+          finishing_check: {
+            status: finishingCheck.value,
+            comment: document.getElementById('comment_finishing_check').value,
+            photos: criterionPhotos['finishing_check'] || []
+          }
+        };
+      }
+    }
+
+    function proceedToProductControl() {
+      // Arrêter les scanners actifs
+      if (window.isScanning) stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      updatePackageQualityStatus();
+      
+      // Passer à l'étape 7 (contrôle produit)
+      document.getElementById("step6").classList.remove("active");
+      document.getElementById("step6").classList.add("completed");
+      
+      // Copier les informations du produit dans la section produit
+      const productInfoHtml = `
+        <h4>👕 Contrôle du produit</h4>
+        <strong>Réf :</strong> ${currentProduct[COL_REF] || 'N/A'} | 
+        <strong>Code :</strong> ${currentProduct[COL_CODE] || 'N/A'} | 
+        <strong>Marque :</strong> ${currentProduct[COL_MARQUE] || 'N/A'}<br/>
+        <strong>Couleur :</strong> ${currentProduct[COL_COULEUR] || 'N/A'} | 
+        <strong>Taille :</strong> ${currentProduct[COL_TAILLE] || 'N/A'} | 
+        <strong>EAN :</strong> ${currentProduct[COL_EAN] || 'N/A'}
+      `;
+      
+      document.getElementById("productControlInfo").innerHTML = productInfoHtml;
+      
+      document.getElementById("step7").classList.remove("hidden");
+      document.getElementById("step7").classList.add("active");
+
+      // Scroll vers la section de contrôle produit
+      document.getElementById("step7").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function goBackToPackageControl() {
+      // Retourner à l'étape 6 (contrôle carton)
+      document.getElementById("step7").classList.remove("active");
+      document.getElementById("step7").classList.add("hidden");
+      
+      document.getElementById("step6").classList.add("active");
+      document.getElementById("step6").classList.remove("completed");
+
+      // Scroll vers la section de contrôle carton
+      document.getElementById("step6").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function proceedToEanControl() {
+      // Arrêter les scanners actifs
+      if (window.isScanning) stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      updateProductQualityStatus();
+      
+      if (!currentProduct || !currentProduct[COL_REF]) {
+        alert("⚠️ Impossible de récupérer la référence du produit");
+        return;
+      }
+
+      currentReference = currentProduct[COL_REF];
+      
+      // Trouver tous les EAN de cette référence
+      referenceEanList = database.filter(item => item[COL_REF] === currentReference);
+      checkedEans.clear();
+      nonTestedEans.clear();
+
+      if (referenceEanList.length === 0) {
+        alert("⚠️ Aucun EAN trouvé pour cette référence");
+        return;
+      }
+
+      // Passer à l'étape 8 (contrôle EAN)
+      document.getElementById("step7").classList.remove("active");
+      document.getElementById("step7").classList.add("completed");
+      
+      // Afficher les informations de la référence
+      const eanInfoHtml = `
+        <h4>📋 Contrôle des EAN</h4>
+        <strong>Référence :</strong> ${currentReference}<br/>
+        <strong>Nombre d'EAN à contrôler :</strong> ${referenceEanList.length}<br/>
+        <small>Vérifiez que tous les codes EAN de cette référence sont présents physiquement</small>
+      `;
+      
+      document.getElementById("eanControlInfo").innerHTML = eanInfoHtml;
+      
+      document.getElementById("step8").classList.remove("hidden");
+      document.getElementById("step8").classList.add("active");
+
+      // Initialiser la liste des EAN
+      displayEanList();
+      updateEanProgress();
+
+      // Scroll vers la section de contrôle EAN
+      document.getElementById("step8").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function displayEanList() {
+      const eanList = document.getElementById('eanList');
+      
+      eanList.innerHTML = referenceEanList.map((item, index) => {
+        const isChecked = checkedEans.has(item[COL_EAN]);
+        const isNonTested = nonTestedEans.has(item[COL_EAN]);
+        
+        let statusClass = '';
+        let statusText = '';
+        let statusBadgeClass = '';
+        let actionButton = '';
+        
+        if (isChecked) {
+          statusClass = 'checked';
+          statusText = 'Verifie ✅';
+          statusBadgeClass = 'found';
+          actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
+        } else if (isNonTested) {
+          statusClass = 'non-tested';
+          statusText = 'Non testé ⏭️';
+          statusBadgeClass = 'non-tested';
+          actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
+        } else {
+          statusClass = '';
+          statusText = 'En attente ⏳';
+          statusBadgeClass = 'pending';
+          actionButton = `<button onclick="markAsNonTested('${item[COL_EAN]}')" style="background: #ffc107; color: #000; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">⏭️ Non testé</button>`;
+        }
+        
+        return `
+          <div class="ean-item ${statusClass}" id="ean-item-${index}">
+            <div class="ean-details">
+              <div class="ean-code">${item[COL_EAN] || 'N/A'}</div>
+              <div class="ean-info">
+                ${item[COL_CODE] || 'N/A'} | 
+                Taille: ${item[COL_TAILLE] || 'N/A'} | 
+                Couleur: ${item[COL_COULEUR] || 'N/A'}
+              </div>
+            </div>
+            <div style="display: flex; align-items: center;">
+              <div class="ean-status ${statusBadgeClass}">${statusText}</div>
+              ${actionButton}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateEanProgress() {
+      const total = referenceEanList.length;
+      const checked = checkedEans.size;
+      const nonTested = nonTestedEans.size;
+      const processed = checked + nonTested;
+      const percentage = total > 0 ? (processed / total) * 100 : 0;
+
+      document.getElementById('progressFill').style.width = percentage + '%';
+      document.getElementById('progressText').textContent = `${checked} verifies + ${nonTested} non testes = ${processed} / ${total} EAN traites`;
+
+      // Afficher un résumé si tous les EAN sont traités
+      if (processed === total && total > 0) {
+        showEanValidationResult();
+      }
+    }
+
+    function markAsNonTested(eanCode) {
+      if (checkedEans.has(eanCode)) {
+        return;
+      }
+      
+      nonTestedEans.add(eanCode);
+      displayEanList();
+      updateEanProgress();
+      
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+    }
+
+    function resetEanStatus(eanCode) {
+      if (confirm("🔄 Remettre cet EAN en attente ?\n\nIl redeviendra disponible pour être scanné ou marqué comme non testé.")) {
+        checkedEans.delete(eanCode);
+        nonTestedEans.delete(eanCode);
+        displayEanList();
+        updateEanProgress();
+        
+        if (navigator.vibrate) {
+          navigator.vibrate(100);
+        }
+      }
+    }
+
+    function showEanValidationResult() {
+      const resultDiv = document.getElementById('eanValidationResult');
+      const total = referenceEanList.length;
+      const checked = checkedEans.size;
+      const nonTested = nonTestedEans.size;
+      
+      let statusClass = 'success';
+      let statusIcon = '✅';
+      let statusTitle = 'Contrôle EAN terminé';
+      
+      if (nonTested > 0) {
+        statusClass = 'warning';
+        statusIcon = '⚠️';
+        statusTitle = 'Contrôle EAN terminé avec réserves';
+      }
+      
+      resultDiv.innerHTML = `
+        <div class="validation-summary ${statusClass}">
+          <h4>${statusIcon
