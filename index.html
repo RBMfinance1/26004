@@ -25,7 +25,6 @@
       const stopButton = document.getElementById('stopButton');
       
       try {
-        // Arrêter toute session précédente
         if (codeReader) {
           codeReader.reset();
         }
@@ -33,7 +32,7 @@
         codeReader = new BrowserMultiFormatReader();
         const constraints = {
           video: {
-            facingMode: 'environment', // Caméra arrière
+            facingMode: 'environment',
             width: { ideal: 1280 },
             height: { ideal: 720 }
           }
@@ -44,7 +43,6 @@
             document.getElementById("barcodeInput").value = result.text;
             stopCamera();
             findProduct();
-            // Vibration si supportée
             if (navigator.vibrate) {
               navigator.vibrate(200);
             }
@@ -67,20 +65,17 @@
     window.stopCamera = function() {
       window.isScanning = false;
       
-      // Arrêter le flux vidéo
       const video = document.getElementById('video');
       if (video && video.srcObject) {
         const stream = video.srcObject;
         if (stream) {
           stream.getTracks().forEach(track => {
             track.stop();
-            console.log('Track arrêté:', track.kind);
           });
           video.srcObject = null;
         }
       }
       
-      // Arrêter le code reader
       if (codeReader) {
         try {
           codeReader.reset();
@@ -97,7 +92,6 @@
       const video = document.getElementById('video');
       if (video) {
         video.style.display = 'none';
-        // S'assurer que le flux est bien coupé
         if (video.srcObject) {
           video.srcObject = null;
         }
@@ -212,16 +206,7 @@
       margin: 15px 0;
     }
     
-    #video {
-      width: 100%;
-      max-width: 400px;
-      height: 300px;
-      border: 2px solid #667eea;
-      border-radius: 10px;
-      object-fit: cover;
-    }
-    
-    #eanVideo {
+    #video, #eanVideo {
       width: 100%;
       max-width: 400px;
       height: 300px;
@@ -295,7 +280,6 @@
       margin: 10px 0;
     }
     
-    /* Styles pour la liste de produits */
     #searchInput, #bookingSearchInput {
       width: 100%;
       padding: 10px;
@@ -314,10 +298,6 @@
     
     .product-item:hover, .booking-item:hover {
       background-color: #e9ecef;
-    }
-    
-    .product-item:last-child, .booking-item:last-child {
-      border-bottom: none;
     }
     
     .product-ref, .booking-ref {
@@ -339,7 +319,6 @@
       font-style: italic;
     }
     
-    /* Styles pour le contrôle qualité */
     .quality-criterion {
       background: white;
       border: 1px solid #ddd;
@@ -385,11 +364,6 @@
       font-weight: bold;
     }
     
-    .radio-option.not-applicable {
-      color: #6c757d;
-      font-weight: bold;
-    }
-    
     .comment-area {
       width: 100%;
       padding: 8px;
@@ -418,233 +392,6 @@
       display: none;
     }
     
-    /* Styles pour le contrôle EAN */
-    .ean-progress {
-      background: #e8f4f8;
-      border: 1px solid #bee5eb;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
-      text-align: center;
-    }
-    
-    .ean-progress h4 {
-      margin: 0 0 10px 0;
-      color: #0c5460;
-    }
-    
-    .progress-bar {
-      background: #e9ecef;
-      border-radius: 10px;
-      height: 20px;
-      overflow: hidden;
-      margin: 10px 0;
-    }
-    
-    .progress-fill {
-      background: linear-gradient(90deg, #28a745, #20c997);
-      height: 100%;
-      width: 0%;
-      transition: width 0.3s ease;
-      border-radius: 10px;
-    }
-    
-    .progress-text {
-      font-weight: bold;
-      color: #495057;
-      margin-top: 5px;
-    }
-    
-    .ean-scanner-section, .ean-list-section {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-    
-    .ean-scanner-section h4, .ean-list-section h4 {
-      margin: 0 0 15px 0;
-      color: #495057;
-    }
-    
-    .ean-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px;
-      border: 1px solid #dee2e6;
-      border-radius: 8px;
-      margin: 8px 0;
-      transition: all 0.3s ease;
-    }
-    
-    .ean-item.checked {
-      background: #d4edda;
-      border-color: #c3e6cb;
-    }
-    
-    .ean-item.checked .ean-status {
-      color: #155724;
-    }
-    
-    .ean-details {
-      flex: 1;
-    }
-    
-    .ean-code {
-      font-family: monospace;
-      font-weight: bold;
-      color: #495057;
-      font-size: 1.1em;
-    }
-    
-    .ean-info {
-      font-size: 0.9em;
-      color: #6c757d;
-      margin-top: 3px;
-    }
-    
-    .ean-status {
-      font-weight: bold;
-      padding: 5px 10px;
-      border-radius: 5px;
-      font-size: 0.9em;
-    }
-    
-    .ean-status.pending {
-      background: #fff3cd;
-      color: #856404;
-    }
-    
-    .ean-status.found {
-      background: #d4edda;
-      color: #155724;
-    }
-    
-    .validation-summary {
-      background: #f8f9fa;
-      border: 1px solid #dee2e6;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-    
-    .validation-summary.success {
-      background: #d4edda;
-      border-color: #c3e6cb;
-    }
-    
-    .validation-summary.warning {
-      background: #fff3cd;
-      border-color: #ffeaa7;
-    }
-    
-    .validation-summary h4 {
-      margin: 0 0 10px 0;
-    }
-    
-    /* Styles pour les photos */
-    .photo-section {
-      margin-top: 10px;
-      padding: 10px;
-      background: #f8f9fa;
-      border-radius: 5px;
-      border: 1px solid #e9ecef;
-    }
-    
-    .photo-upload {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    
-    .photo-upload input[type="file"] {
-      flex: 1;
-      padding: 8px;
-      border: 2px solid #e9ecef;
-      border-radius: 6px;
-      font-size: 0.85rem;
-    }
-    
-    .photo-button {
-      background: #17a2b8;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    
-    .photo-button:hover {
-      background: #138496;
-      transform: translateY(-1px);
-      box-shadow: 0 3px 8px rgba(23, 162, 184, 0.3);
-    }
-    
-    .photo-preview {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-      gap: 10px;
-      margin-top: 10px;
-    }
-    
-    .photo-item {
-      position: relative;
-      border: 2px solid #e9ecef;
-      border-radius: 8px;
-      overflow: hidden;
-      background: #f8f9fa;
-      transition: all 0.3s ease;
-    }
-    
-    .photo-item:hover {
-      border-color: #28a745;
-      transform: scale(1.02);
-    }
-    
-    .photo-item img {
-      width: 100%;
-      height: 100px;
-      object-fit: cover;
-      display: block;
-    }
-    
-    .photo-remove {
-      position: absolute;
-      top: 5px;
-      right: 5px;
-      background: rgba(220, 53, 69, 0.9);
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 24px;
-      height: 24px;
-      font-size: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.3s ease;
-    }
-    
-    .photo-remove:hover {
-      background: #dc3545;
-      transform: scale(1.1);
-    }
-    
-    .photo-timestamp {
-      padding: 5px;
-      font-size: 0.7rem;
-      color: #6c757d;
-      text-align: center;
-      background: rgba(248, 249, 250, 0.9);
-    }
-
-    /* Styles pour le booking */
     .booking-progress {
       background: linear-gradient(135deg, #667eea, #764ba2);
       border-radius: 10px;
@@ -713,11 +460,6 @@
       box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
     }
 
-    .reference-item:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-
     .reference-info {
       flex: 1;
     }
@@ -781,15 +523,228 @@
       text-align: center;
     }
 
-    .drag-handle {
-      color: #ccc;
-      cursor: move;
-      font-size: 1.2em;
-      margin-right: 10px;
+    .ean-progress {
+      background: #e8f4f8;
+      border: 1px solid #bee5eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      text-align: center;
     }
 
-    .drag-handle:hover {
-      color: #666;
+    .ean-progress h4 {
+      margin: 0 0 10px 0;
+      color: #0c5460;
+    }
+
+    .progress-bar {
+      background: #e9ecef;
+      border-radius: 10px;
+      height: 20px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+
+    .progress-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 10px;
+    }
+
+    .progress-text {
+      font-weight: bold;
+      color: #495057;
+      margin-top: 5px;
+    }
+
+    .ean-scanner-section, .ean-list-section {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .ean-scanner-section h4, .ean-list-section h4 {
+      margin: 0 0 15px 0;
+      color: #495057;
+    }
+
+    .ean-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      margin: 8px 0;
+      transition: all 0.3s ease;
+    }
+
+    .ean-item.checked {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+
+    .ean-item.checked .ean-status {
+      color: #155724;
+    }
+
+    .ean-details {
+      flex: 1;
+    }
+
+    .ean-code {
+      font-family: monospace;
+      font-weight: bold;
+      color: #495057;
+      font-size: 1.1em;
+    }
+
+    .ean-info {
+      font-size: 0.9em;
+      color: #6c757d;
+      margin-top: 3px;
+    }
+
+    .ean-status {
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 0.9em;
+    }
+
+    .ean-status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .ean-status.found {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .validation-summary {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .validation-summary.success {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+
+    .validation-summary.warning {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+    }
+
+    .validation-summary h4 {
+      margin: 0 0 10px 0;
+    }
+
+    .photo-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      border: 1px solid #e9ecef;
+    }
+
+    .photo-upload {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .photo-upload input[type="file"] {
+      flex: 1;
+      padding: 8px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    .photo-button {
+      background: #17a2b8;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .photo-button:hover {
+      background: #138496;
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(23, 162, 184, 0.3);
+    }
+
+    .photo-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .photo-item {
+      position: relative;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f8f9fa;
+      transition: all 0.3s ease;
+    }
+
+    .photo-item:hover {
+      border-color: #28a745;
+      transform: scale(1.02);
+    }
+
+    .photo-item img {
+      width: 100%;
+      height: 100px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-remove {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: rgba(220, 53, 69, 0.9);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .photo-remove:hover {
+      background: #dc3545;
+      transform: scale(1.1);
+    }
+
+    .photo-timestamp {
+      padding: 5px;
+      font-size: 0.7rem;
+      color: #6c757d;
+      text-align: center;
+      background: rgba(248, 249, 250, 0.9);
     }
     
     @media (max-width: 768px) {
@@ -798,42 +753,12 @@
         margin: 5px;
       }
       
-      h1 {
-        font-size: 1.3em;
-      }
-      
-      .section {
-        padding: 12px;
-      }
-      
-      button {
-        padding: 10px 15px;
-        font-size: 13px;
-      }
-      
-      #video {
-        height: 250px;
-      }
-      
-      #eanVideo {
-        height: 250px;
-      }
-      
-      .scanner-frame {
-        width: 200px;
-        height: 120px;
-      }
-      
       .radio-group {
         flex-direction: column;
         align-items: flex-start;
         gap: 10px;
       }
       
-      .quality-criterion {
-        padding: 12px;
-      }
-
       .reference-item {
         flex-direction: column;
         align-items: flex-start;
@@ -859,7 +784,8 @@
     <div class="section" id="step2">
       <h3>2️⃣ Charger le fichier de booking</h3>
       <div class="button-row">
-        <button onclick="document.getElementById('bookingFile').click()">📊 Charger fichier Excel (.xlsx)</button>
+        <button onclick="loadOnlineBooking()">🌐 Charger booking en ligne</button>
+        <button onclick="document.getElementById('bookingFile').click()">📁 Charger fichier local</button>
       </div>
       <input type="file" id="bookingFile" accept=".xlsx,.xls" style="display:none;" onchange="loadBookingFile()" />
       <div id="bookingFileStatus"></div>
@@ -891,7 +817,6 @@
 
       <div class="reference-list">
         <h4>📋 Références à contrôler</h4>
-        <p><small>🔧 Glisser-déposer pour réorganiser l'ordre de contrôle</small></p>
         <div id="referencesList"></div>
       </div>
 
@@ -1221,9 +1146,9 @@
   </div>
 
   <script>
-    // Configuration des colonnes (à modifier selon vos besoins)
-    const BOOKING_COL_CODE_ARTICLE = 8;  // Colonne 8 pour le code article (index 8)
-    const BOOKING_COL_BOOKING_NUMBER = 14; // Colonne 14 pour le numéro de booking (index 14)
+    // Configuration des colonnes (H=7, N=13)
+    const BOOKING_COL_CODE_ARTICLE = 7;  // Colonne H pour le code article
+    const BOOKING_COL_BOOKING_NUMBER = 13; // Colonne N pour le numéro de booking
 
     // Variables existantes
     let database = [];
@@ -1246,7 +1171,7 @@
     let completedReferences = new Set();
     let bookingQualityResults = {}; // Stockage de tous les résultats du booking
 
-    // Constantes pour la BDD.csv (existantes)
+    // Constantes pour la BDD.csv
     const COL_REF = 0;
     const COL_CODE = 1;
     const COL_COULEUR = 2;
@@ -1280,20 +1205,18 @@
       document.getElementById("fileStatus").innerHTML = "⏳ Chargement de la base de données en ligne...";
       
       const alternativeUrls = [
-        'https://cdn.jsdelivr.net/gh/rbmfinance1/26002@gh-pages/bdd.csv',
-        'https://raw.githubusercontent.com/rbmfinance1/26002/gh-pages/bdd.csv',
-        'https://rbmfinance1.github.io/26002/bdd.csv'
+        'https://cdn.jsdelivr.net/gh/rbmfinance1/26004@gh-pages/bdd.csv',
+        'https://raw.githubusercontent.com/rbmfinance1/26004/gh-pages/bdd.csv',
+        'https://rbmfinance1.github.io/26004/bdd.csv'
       ];
       
       async function tryUrls(urlIndex = 0) {
         if (urlIndex >= alternativeUrls.length) {
-          console.log('Toutes les sources ont échoué');
           showManualDownloadOption();
           return;
         }
         
         const currentUrl = alternativeUrls[urlIndex];
-        console.log(`Tentative ${urlIndex + 1}:`, currentUrl);
         
         try {
           const response = await fetch(currentUrl, {
@@ -1319,11 +1242,9 @@
             throw new Error('Fichier CSV vide ou trop court');
           }
           
-          console.log('✅ Chargement réussi avec:', currentUrl);
           processCsvData(csvData);
           
         } catch (error) {
-          console.log(`Source ${urlIndex + 1} échouée:`, error.message);
           tryUrls(urlIndex + 1);
         }
       }
@@ -1336,7 +1257,7 @@
         `<div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 10px 0;">
           <strong>📥 Téléchargement manuel requis</strong><br/><br/>
           <div style="margin: 10px 0;">
-            <a href="https://rbmfinance1.github.io/26002/bdd.csv" 
+            <a href="https://rbmfinance1.github.io/26004/bdd.csv" 
                download="bdd.csv" 
                style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
               📥 Télécharger bdd.csv
@@ -1368,19 +1289,127 @@
             }
           },
           error: (error) => {
-            console.error('Erreur Papa Parse:', error);
             document.getElementById("fileStatus").innerHTML = 
               "❌ Erreur lors du traitement du fichier CSV";
           }
         });
       } catch (error) {
-        console.error('Erreur de traitement CSV:', error);
         document.getElementById("fileStatus").innerHTML = 
           "❌ Erreur lors du traitement des données";
       }
     }
 
-    // Nouvelle fonction pour charger le fichier Excel de booking
+    function loadOnlineBooking() {
+      if (database.length === 0) {
+        alert("⚠️ Veuillez d'abord charger la base de données CSV.");
+        return;
+      }
+
+      document.getElementById("bookingFileStatus").innerHTML = "⏳ Chargement du fichier de booking en ligne...";
+      
+      const alternativeUrls = [
+        'https://cdn.jsdelivr.net/gh/rbmfinance1/26004@gh-pages/booking.xlsx',
+        'https://raw.githubusercontent.com/rbmfinance1/26004/gh-pages/booking.xlsx',
+        'https://rbmfinance1.github.io/26004/booking.xlsx'
+      ];
+      
+      async function tryBookingUrls(urlIndex = 0) {
+        if (urlIndex >= alternativeUrls.length) {
+          console.log('Toutes les sources de booking ont échoué');
+          showManualBookingDownloadOption();
+          return;
+        }
+        
+        const currentUrl = alternativeUrls[urlIndex];
+        console.log(`Tentative booking ${urlIndex + 1}:`, currentUrl);
+        
+        try {
+          const response = await fetch(currentUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: {
+              'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,*/*'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const arrayBuffer = await response.arrayBuffer();
+          
+          if (arrayBuffer.byteLength < 100) {
+            throw new Error('Fichier Excel vide ou trop court');
+          }
+          
+          console.log('✅ Chargement booking réussi avec:', currentUrl);
+          processBookingData(arrayBuffer, true);
+          
+        } catch (error) {
+          console.log(`Source booking ${urlIndex + 1} échouée:`, error.message);
+          tryBookingUrls(urlIndex + 1);
+        }
+      }
+      
+      tryBookingUrls(0);
+    }
+
+    function showManualBookingDownloadOption() {
+      document.getElementById("bookingFileStatus").innerHTML = 
+        `<div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 10px 0;">
+          <strong>📥 Téléchargement manuel requis</strong><br/><br/>
+          <div style="margin: 10px 0;">
+            <a href="https://rbmfinance1.github.io/26004/booking.xlsx" 
+               download="booking.xlsx" 
+               style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
+              📥 Télécharger booking.xlsx
+            </a>
+          </div>
+          <small style="color: #856404;">
+            1. Cliquez sur le lien ci-dessus pour télécharger<br/>
+            2. Une fois téléchargé, utilisez "📁 Charger fichier local"<br/>
+            3. Sélectionnez le fichier booking.xlsx téléchargé
+          </small>
+        </div>`;
+    }
+
+    function processBookingData(arrayBuffer, isOnline = false) {
+      try {
+        const data = new Uint8Array(arrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (jsonData.length < 2) {
+          throw new Error('Fichier Excel vide ou invalide');
+        }
+        
+        bookingData = jsonData.slice(1);
+        extractBookings();
+        
+        const source = isOnline ? 'depuis le fichier en ligne' : 'avec succès';
+        document.getElementById("bookingFileStatus").innerHTML = 
+          `✅ ${bookingData.length} lignes chargées ${source} - ${availableBookings.length} bookings trouvés`;
+        
+        if (availableBookings.length > 0) {
+          document.getElementById('step2').classList.add('completed');
+          document.getElementById('step3').classList.remove('hidden');
+          document.getElementById('step3').classList.add('active');
+          displayBookings();
+        } else {
+          document.getElementById("bookingFileStatus").innerHTML += 
+            `<br/><small style="color: #dc3545;">Aucun booking trouvé. Vérifiez que les colonnes H (codes article) et N (numéros booking) contiennent des données.</small>`;
+        }
+        
+      } catch (error) {
+        console.error('Erreur traitement booking:', error);
+        document.getElementById("bookingFileStatus").innerHTML = 
+          "❌ Erreur lors du traitement du fichier booking: " + error.message;
+      }
+    }
     function loadBookingFile() {
       const file = document.getElementById('bookingFile').files[0];
       if (!file) return alert("⚠️ Sélectionnez un fichier Excel.");
@@ -1394,47 +1423,7 @@
       
       const reader = new FileReader();
       reader.onload = function(e) {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
-          
-          // Prendre la première feuille
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
-          
-          // Convertir en JSON (avec en-têtes)
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-          
-          if (jsonData.length < 2) {
-            throw new Error('Fichier Excel vide ou invalide');
-          }
-          
-          // Supprimer la ligne d'en-tête et stocker les données
-          bookingData = jsonData.slice(1);
-          
-          // Extraire les bookings uniques
-          extractBookings();
-          
-          document.getElementById("bookingFileStatus").innerHTML = 
-            `✅ ${bookingData.length} lignes chargées - ${availableBookings.length} bookings trouvés`;
-          
-          document.getElementById('step2').classList.add('completed');
-          document.getElementById('step3').classList.remove('hidden');
-          document.getElementById('step3').classList.add('active');
-          
-          // Afficher la liste des bookings
-          displayBookings();
-          
-        } catch (error) {
-          console.error('Erreur lecture Excel:', error);
-          document.getElementById("bookingFileStatus").innerHTML = 
-            "❌ Erreur lors de la lecture du fichier Excel: " + error.message;
-        }
-      };
-      
-      reader.onerror = function() {
-        document.getElementById("bookingFileStatus").innerHTML = 
-          "❌ Erreur lors de la lecture du fichier";
+        processBookingData(e.target.result, false);
       };
       
       reader.readAsArrayBuffer(file);
@@ -1464,8 +1453,6 @@
         referenceCount: bookingsWithCounts[booking].size,
         references: Array.from(bookingsWithCounts[booking])
       })).sort((a, b) => a.number.localeCompare(b.number));
-      
-      console.log('Bookings extraits:', availableBookings);
     }
 
     function displayBookings() {
@@ -1522,42 +1509,67 @@
         return;
       }
       
-      // Extraire les références de ce booking depuis la BDD
       extractBookingReferences();
       
-      // Afficher les informations du booking
       document.getElementById("currentBookingInfo").innerHTML = `
         <h4>📋 Booking sélectionné : ${currentBooking.number}</h4>
         <strong>Références à contrôler :</strong> ${bookingReferences.length}<br/>
         <strong>Statut :</strong> Prêt pour le contrôle
       `;
       
-      // Passer à l'étape suivante
       document.getElementById('step3').classList.remove('active');
       document.getElementById('step3').classList.add('completed');
       document.getElementById('step4').classList.remove('hidden');
       document.getElementById('step4').classList.add('active');
       
-      // Afficher les références
       displayBookingReferences();
       updateBookingProgress();
       
-      // Scroll vers la section
       document.getElementById('step4').scrollIntoView({ behavior: 'smooth' });
     }
 
     function extractBookingReferences() {
+      console.log('=== DEBUG EXTRACTION RÉFÉRENCES ===');
+      console.log('Booking sélectionné:', currentBooking.number);
+      
       const codesArticles = bookingData
         .filter(row => String(row[BOOKING_COL_BOOKING_NUMBER]).trim() === currentBooking.number)
         .map(row => String(row[BOOKING_COL_CODE_ARTICLE]).trim())
         .filter(code => code);
       
-      // Trouver les références correspondantes dans la BDD
+      console.log('Codes articles trouvés dans le booking:', codesArticles);
+      console.log('Nombre de codes articles:', codesArticles.length);
+      
+      // Afficher quelques exemples de codes de la BDD
+      const bddCodes = database.slice(0, 10).map(item => item[COL_CODE]);
+      console.log('Exemples de codes dans la BDD:', bddCodes);
+      
       bookingReferences = [];
       const uniqueRefs = new Set();
+      let foundMatches = 0;
       
-      codesArticles.forEach(codeArticle => {
+      codesArticles.forEach((codeArticle, index) => {
+        console.log(`\nRecherche du code article ${index + 1}:`, codeArticle);
+        
         const matchingItems = database.filter(item => item[COL_CODE] === codeArticle);
+        console.log(`  Correspondances trouvées: ${matchingItems.length}`);
+        
+        if (matchingItems.length === 0) {
+          // Chercher des correspondances approximatives
+          const similarCodes = database.filter(item => 
+            item[COL_CODE] && item[COL_CODE].toLowerCase().includes(codeArticle.toLowerCase())
+          ).slice(0, 3);
+          
+          if (similarCodes.length > 0) {
+            console.log(`  Codes similaires trouvés:`, similarCodes.map(item => item[COL_CODE]));
+          } else {
+            console.log(`  Aucun code similaire trouvé`);
+          }
+        } else {
+          foundMatches++;
+          console.log(`  Référence(s) trouvée(s):`, matchingItems.map(item => item[COL_REF]));
+        }
+        
         matchingItems.forEach(item => {
           const ref = item[COL_REF];
           if (ref && !uniqueRefs.has(ref)) {
@@ -1572,12 +1584,92 @@
         });
       });
       
-      // Réinitialiser les index et statuts
+      console.log('\n=== RÉSUMÉ ===');
+      console.log('Codes articles dans le booking:', codesArticles.length);
+      console.log('Codes avec correspondance dans BDD:', foundMatches);
+      console.log('Références uniques extraites:', bookingReferences.length);
+      console.log('Références finales:', bookingReferences.map(ref => ref.reference));
+      console.log('=== FIN DEBUG ===');
+      
+      // Afficher un message d'aide si aucune référence trouvée
+      if (bookingReferences.length === 0 && codesArticles.length > 0) {
+        showCodeMismatchHelp(codesArticles);
+      }
+      
       currentReferenceIndex = 0;
       completedReferences.clear();
-      bookingQualityResults = {};
+    }
+
+    function showCodeMismatchHelp(codesArticles) {
+      document.getElementById("currentBookingInfo").innerHTML += `
+        <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 15px 0;">
+          <strong>⚠️ Problème de correspondance des codes</strong><br/><br/>
+          <div style="margin: 10px 0;">
+            <strong>Codes articles du booking :</strong><br/>
+            <div style="font-family: monospace; font-size: 0.9em; background: #f8f9fa; padding: 8px; border-radius: 4px; margin: 8px 0;">
+              ${codesArticles.slice(0, 10).join(', ')}${codesArticles.length > 10 ? '...' : ''}
+            </div>
+            <small style="color: #856404;">
+              Ces codes articles du fichier Excel ne correspondent à aucun code dans la BDD.csv.<br/>
+              Vérifiez que les codes sont identiques dans les deux fichiers.
+            </small>
+          </div>
+          <button onclick="showDetailedComparison()" style="background: #007bff; color: white; padding: 8px 12px; border: none; border-radius: 5px; margin: 5px;">
+            🔍 Comparer avec la BDD
+          </button>
+        </div>`;
+    }
+
+    function showDetailedComparison() {
+      const codesArticles = bookingData
+        .filter(row => String(row[BOOKING_COL_BOOKING_NUMBER]).trim() === currentBooking.number)
+        .map(row => String(row[BOOKING_COL_CODE_ARTICLE]).trim())
+        .filter(code => code);
       
-      console.log('Références du booking:', bookingReferences);
+      const bddCodes = database.slice(0, 20).map(item => item[COL_CODE]);
+      
+      let comparisonText = "=== COMPARAISON CODES ARTICLES ===\n\n";
+      comparisonText += `CODES DU BOOKING ${currentBooking.number}:\n`;
+      codesArticles.slice(0, 10).forEach((code, index) => {
+        comparisonText += `${index + 1}: "${code}"\n`;
+      });
+      
+      comparisonText += `\nCODES DE LA BDD (exemples):\n`;
+      bddCodes.forEach((code, index) => {
+        comparisonText += `${index + 1}: "${code || '(vide)'}"\n`;
+      });
+      
+      comparisonText += `\nRECHERCHE DE CORRESPONDANCES:\n`;
+      codesArticles.slice(0, 5).forEach(bookingCode => {
+        const exactMatch = database.find(item => item[COL_CODE] === bookingCode);
+        const similarMatches = database.filter(item => 
+          item[COL_CODE] && (
+            item[COL_CODE].toLowerCase().includes(bookingCode.toLowerCase()) ||
+            bookingCode.toLowerCase().includes(item[COL_CODE].toLowerCase())
+          )
+        ).slice(0, 3);
+        
+        comparisonText += `\nCode "${bookingCode}":\n`;
+        if (exactMatch) {
+          comparisonText += `  ✅ Correspondance exacte trouvée\n`;
+        } else if (similarMatches.length > 0) {
+          comparisonText += `  ⚠️ Correspondances similaires: ${similarMatches.map(item => item[COL_CODE]).join(', ')}\n`;
+        } else {
+          comparisonText += `  ❌ Aucune correspondance trouvée\n`;
+        }
+      });
+      
+      const popup = window.open('', 'comparison', 'width=700,height=500,scrollbars=yes');
+      popup.document.write(`
+        <html>
+          <head><title>Comparaison Codes Articles</title></head>
+          <body style="font-family: monospace; padding: 20px;">
+            <h3>Comparaison des codes articles</h3>
+            <pre style="white-space: pre-wrap; font-size: 12px;">${comparisonText}</pre>
+            <button onclick="window.close()">Fermer</button>
+          </body>
+        </html>
+      `);
     }
 
     function displayBookingReferences() {
@@ -1604,9 +1696,7 @@
         }
         
         return `
-          <div class="reference-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}" 
-               data-index="${index}" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">
-            <div class="drag-handle">⋮⋮</div>
+          <div class="reference-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}">
             <div class="reference-info">
               <div class="reference-code">${ref.reference}</div>
               <div class="reference-details">
@@ -1617,39 +1707,6 @@
           </div>
         `;
       }).join('');
-    }
-
-    // Fonctions de drag & drop pour réorganiser les références
-    function dragStart(e) {
-      e.dataTransfer.setData("text/plain", e.target.dataset.index);
-    }
-
-    function dragOver(e) {
-      e.preventDefault();
-    }
-
-    function drop(e) {
-      e.preventDefault();
-      const fromIndex = parseInt(e.dataTransfer.getData("text/plain"));
-      const toIndex = parseInt(e.target.closest('.reference-item').dataset.index);
-      
-      if (fromIndex !== toIndex) {
-        // Réorganiser le tableau
-        const item = bookingReferences.splice(fromIndex, 1)[0];
-        bookingReferences.splice(toIndex, 0, item);
-        
-        // Ajuster l'index courant
-        if (currentReferenceIndex === fromIndex) {
-          currentReferenceIndex = toIndex;
-        } else if (fromIndex < currentReferenceIndex && toIndex >= currentReferenceIndex) {
-          currentReferenceIndex--;
-        } else if (fromIndex > currentReferenceIndex && toIndex <= currentReferenceIndex) {
-          currentReferenceIndex++;
-        }
-        
-        // Réafficher
-        displayBookingReferences();
-      }
     }
 
     function updateBookingProgress() {
@@ -1669,16 +1726,13 @@
         return;
       }
       
-      // Passer à l'étape de scan
       document.getElementById('step4').classList.remove('active');
       document.getElementById('step4').classList.add('completed');
       document.getElementById('step5').classList.remove('hidden');
       document.getElementById('step5').classList.add('active');
       
-      // Mettre à jour les informations de contrôle
       updateCurrentControlInfo();
       
-      // Scroll vers la section
       document.getElementById('step5').scrollIntoView({ behavior: 'smooth' });
     }
 
@@ -1696,27 +1750,21 @@
     }
 
     function selectDifferentBooking() {
-      // Retourner à la sélection de booking
       document.getElementById('step4').classList.remove('active');
       document.getElementById('step4').classList.add('hidden');
       document.getElementById('step3').classList.add('active');
       document.getElementById('step3').classList.remove('completed');
       
-      // Réinitialiser
       currentBooking = null;
       bookingReferences = [];
       currentReferenceIndex = 0;
       completedReferences.clear();
       
-      // Scroll vers la section
       document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Fonctions modifiées pour la recherche de produit dans le contexte booking
     function findProduct() {
-      // Arrêter les scanners actifs
       if (window.isScanning) stopCamera();
-      if (window.isEanScanning) stopEanScanner();
       
       const code = document.getElementById("barcodeInput").value.trim();
       if (!code) {
@@ -1729,17 +1777,14 @@
         return;
       }
       
-      // Vérifier si nous sommes en mode booking
       if (currentBooking && bookingReferences.length > 0) {
         const currentRef = bookingReferences[currentReferenceIndex];
         if (currentRef) {
-          // Vérifier que le produit scanné appartient à la référence en cours
           const result = currentRef.items.find(item => item[COL_EAN] === code);
           
           if (result) {
             proceedWithProduct(result);
           } else {
-            // Vérifier si ce produit appartient à une autre référence du booking
             const otherRefProduct = database.find(item => item[COL_EAN] === code);
             if (otherRefProduct) {
               const belongsToBooking = bookingReferences.some(ref => 
@@ -1747,7 +1792,7 @@
               );
               
               if (belongsToBooking) {
-                alert(`❌ Ce produit appartient à une autre référence du booking.\n\nRéférence attendue: ${currentRef.reference}\nRéférence du produit: ${otherRefProduct[COL_REF]}\n\nTerminez d'abord la référence en cours ou réorganisez l'ordre.`);
+                alert(`❌ Ce produit appartient à une autre référence du booking.\n\nRéférence attendue: ${currentRef.reference}\nRéférence du produit: ${otherRefProduct[COL_REF]}\n\nTerminez d'abord la référence en cours.`);
               } else {
                 alert(`❌ Ce produit n'appartient pas au booking ${currentBooking.number}.\n\nRéférence du produit: ${otherRefProduct[COL_REF]}`);
               }
@@ -1757,21 +1802,11 @@
           }
         }
       } else {
-        // Mode normal (sans booking)
         const result = database.find(row => row[COL_EAN] === code);
         if (result) {
           proceedWithProduct(result);
         } else {
-          const rd = document.getElementById("results");
-          rd.style.display = "block";
-          rd.innerHTML = `
-            <div class="item">
-              <strong>❌ Aucun article trouvé</strong><br/>
-              Code EAN recherché : <strong>${code}</strong><br/>
-              Vérifiez le code ou la base de données.<br/><br/>
-              <button onclick="startCamera()">📷 Essayer avec la caméra</button>
-            </div>`;
-          rd.scrollIntoView({ behavior: 'smooth' });
+          alert("❌ Code EAN non trouvé dans la base de données");
         }
       }
     }
@@ -1795,16 +1830,13 @@
     }
 
     function showProductList() {
-      // Arrêter les scanners actifs
       if (window.isScanning) stopCamera();
-      if (window.isEanScanning) stopEanScanner();
       
       if (database.length === 0) {
         alert("⚠️ Veuillez d'abord charger un fichier CSV");
         return;
       }
       
-      // Utiliser les produits de la référence courante si en mode booking
       let productsToShow = database;
       if (currentBooking && bookingReferences.length > 0) {
         const currentRef = bookingReferences[currentReferenceIndex];
@@ -1854,7 +1886,6 @@
     function filterProducts() {
       const searchTerm = document.getElementById('searchInput').value.toLowerCase();
       
-      // Utiliser les produits de la référence courante si en mode booking
       let baseProducts = database;
       if (currentBooking && bookingReferences.length > 0) {
         const currentRef = bookingReferences[currentReferenceIndex];
@@ -1910,7 +1941,6 @@
     function startQualityControl() {
       // Arrêter les scanners actifs
       if (window.isScanning) stopCamera();
-      if (window.isEanScanning) stopEanScanner();
       
       if (!currentProduct) return;
 
@@ -2052,7 +2082,6 @@
     function proceedToProductControl() {
       // Arrêter les scanners actifs
       if (window.isScanning) stopCamera();
-      if (window.isEanScanning) stopEanScanner();
       
       updatePackageQualityStatus();
       
@@ -2093,10 +2122,6 @@
     }
 
     function proceedToEanControl() {
-      // Arrêter les scanners actifs
-      if (window.isScanning) stopCamera();
-      if (window.isEanScanning) stopEanScanner();
-      
       updateProductQualityStatus();
       
       if (!currentProduct || !currentProduct[COL_REF]) {
@@ -2250,4 +2275,518 @@
       
       resultDiv.innerHTML = `
         <div class="validation-summary ${statusClass}">
-          <h4>${statusIcon
+          <h4>${statusIcon} ${statusTitle}</h4>
+          <p>Référence <strong>${currentReference}</strong> : ${total} EAN au total</p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            <li><strong>${checked} EAN vérifiés</strong> ✅</li>
+            ${nonTested > 0 ? `<li><strong>${nonTested} EAN non testés</strong> ⏭️</li>` : ''}
+          </ul>
+          <p>Vous pouvez maintenant terminer cette référence.</p>
+        </div>
+      `;
+      resultDiv.style.display = 'block';
+    }
+
+    function startEanScanner() {
+      const video = document.getElementById('eanVideo');
+      const scanButton = document.getElementById('eanScanButton');
+      const stopButton = document.getElementById('eanStopButton');
+      
+      try {
+        // Arrêter toute session précédente
+        if (eanCodeReader) {
+          eanCodeReader.reset();
+        }
+        
+        eanCodeReader = new window.BrowserMultiFormatReader();
+        const constraints = {
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+        
+        eanCodeReader.decodeFromConstraints(constraints, video, (result, err) => {
+          if (result && window.isEanScanning) {
+            document.getElementById("eanInput").value = result.text;
+            checkEanForReference();
+            if (navigator.vibrate) {
+              navigator.vibrate(200);
+            }
+          }
+        }).then(() => {
+          window.isEanScanning = true;
+          video.style.display = 'block';
+          scanButton.style.display = 'none';
+          stopButton.style.display = 'inline-block';
+          document.getElementById('eanScannerContainer').style.display = 'block';
+        }).catch(err => {
+          console.error('Erreur caméra EAN:', err);
+          alert('Impossible d\'accéder à la caméra pour le scan EAN.');
+          resetEanCameraButtons();
+        });
+        
+      } catch (err) {
+        console.error('Erreur initialisation scanner EAN:', err);
+        alert('Erreur lors de l\'initialisation du scanner EAN.');
+        resetEanCameraButtons();
+      }
+    }
+
+    function stopEanScanner() {
+      window.isEanScanning = false;
+      
+      // Arrêter le flux vidéo EAN
+      const eanVideo = document.getElementById('eanVideo');
+      if (eanVideo && eanVideo.srcObject) {
+        const stream = eanVideo.srcObject;
+        if (stream) {
+          stream.getTracks().forEach(track => {
+            track.stop();
+          });
+          eanVideo.srcObject = null;
+        }
+      }
+      
+      // Arrêter le code reader EAN
+      if (eanCodeReader) {
+        try {
+          eanCodeReader.reset();
+        } catch (e) {
+          console.log('Erreur lors de l\'arrêt de la caméra EAN:', e);
+        }
+        eanCodeReader = null;
+      }
+      
+      resetEanCameraButtons();
+    }
+
+    function resetEanCameraButtons() {
+      const eanVideo = document.getElementById('eanVideo');
+      if (eanVideo) {
+        eanVideo.style.display = 'none';
+        if (eanVideo.srcObject) {
+          eanVideo.srcObject = null;
+        }
+      }
+      
+      document.getElementById('eanScanButton').style.display = 'inline-block';
+      document.getElementById('eanStopButton').style.display = 'none';
+      document.getElementById('eanScannerContainer').style.display = 'none';
+    }
+
+    function checkEanForReference() {
+      const scannedEan = document.getElementById("eanInput").value.trim();
+      
+      if (!scannedEan) {
+        alert("⚠️ Veuillez saisir ou scanner un code EAN");
+        return;
+      }
+
+      // Vérifier si cet EAN appartient à la référence actuelle
+      const matchingItem = referenceEanList.find(item => item[COL_EAN] === scannedEan);
+      
+      if (matchingItem) {
+        if (checkedEans.has(scannedEan)) {
+          alert("ℹ️ Cet EAN a déjà été vérifié");
+        } else {
+          // Si l'EAN était marqué comme non testé, le retirer de cette liste
+          if (nonTestedEans.has(scannedEan)) {
+            nonTestedEans.delete(scannedEan);
+          }
+          
+          checkedEans.add(scannedEan);
+          displayEanList();
+          updateEanProgress();
+          
+          // Feedback positif
+          if (navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+          }
+          
+          // Animation de succès
+          const itemIndex = referenceEanList.findIndex(item => item[COL_EAN] === scannedEan);
+          const itemElement = document.getElementById(`ean-item-${itemIndex}`);
+          if (itemElement) {
+            itemElement.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+              itemElement.style.transform = 'scale(1)';
+            }, 200);
+          }
+        }
+      } else {
+        // Vérifier si cet EAN existe dans la base mais pour une autre référence
+        const otherItem = database.find(item => item[COL_EAN] === scannedEan);
+        
+        if (otherItem) {
+          alert(`❌ Cet EAN appartient à une autre référence :\n${otherItem[COL_REF]}\n\nRéférence attendue : ${currentReference}`);
+        } else {
+          alert("❌ Code EAN non trouvé dans la base de données");
+        }
+      }
+      
+      // Vider le champ de saisie
+      document.getElementById("eanInput").value = "";
+    }
+
+    function goBackToProductControl() {
+      // Retourner à l'étape 7 (contrôle produit)
+      document.getElementById("step8").classList.remove("active");
+      document.getElementById("step8").classList.add("hidden");
+      
+      document.getElementById("step7").classList.add("active");
+      document.getElementById("step7").classList.remove("completed");
+
+      // Arrêter le scanner EAN s'il est en cours
+      if (window.isEanScanning) stopEanScanner();
+
+      // Scroll vers la section de contrôle produit
+      document.getElementById("step7").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function completeCurrentReference() {
+      // Sauvegarder les résultats de cette référence
+      saveCurrentReferenceResults();
+      
+      // Marquer la référence comme terminée
+      const currentRef = bookingReferences[currentReferenceIndex];
+      if (currentRef) {
+        completedReferences.add(currentRef.reference);
+      }
+      
+      // Passer à la référence suivante
+      moveToNextReference();
+    }
+
+    function saveCurrentReferenceResults() {
+      if (!currentProduct) return;
+      
+      const referenceKey = currentProduct[COL_REF];
+      bookingQualityResults[referenceKey] = {
+        reference: referenceKey,
+        product: currentProduct,
+        packageQuality: { ...packageQualityResults },
+        productQuality: { ...productQualityResults },
+        eanControl: {
+          total: referenceEanList.length,
+          checked: Array.from(checkedEans),
+          nonTested: Array.from(nonTestedEans),
+          eanList: [...referenceEanList]
+        },
+        timestamp: new Date().toISOString(),
+        photos: { ...criterionPhotos }
+      };
+    }
+
+    function skipToNextReference() {
+      if (confirm("⏭️ Passer à la référence suivante ?\n\nLes données du contrôle en cours seront perdues.")) {
+        moveToNextReference();
+      }
+    }
+
+    function moveToNextReference() {
+      // Réinitialiser les contrôles
+      resetCurrentControlState();
+      
+      // Passer à la référence suivante
+      currentReferenceIndex++;
+      
+      if (currentReferenceIndex >= bookingReferences.length) {
+        // Toutes les références ont été traitées
+        showBookingComplete();
+      } else {
+        // Mettre à jour l'affichage et retourner au scan
+        updateBookingProgress();
+        displayBookingReferences();
+        updateCurrentControlInfo();
+        
+        // Retourner à l'étape de scan
+        document.getElementById("step8").classList.remove("active");
+        document.getElementById("step8").classList.add("hidden");
+        document.getElementById("step7").classList.remove("active");
+        document.getElementById("step7").classList.add("hidden");
+        document.getElementById("step6").classList.remove("active");
+        document.getElementById("step6").classList.add("hidden");
+        
+        document.getElementById("step5").classList.remove("completed");
+        document.getElementById("step5").classList.add("active");
+        
+        // Scroll vers la section de scan
+        document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function resetCurrentControlState() {
+      // Réinitialiser toutes les variables de contrôle
+      currentProduct = null;
+      currentReference = null;
+      referenceEanList = [];
+      checkedEans.clear();
+      nonTestedEans.clear();
+      packageQualityResults = {};
+      productQualityResults = {};
+      criterionPhotos = {};
+      
+      // Réinitialiser les formulaires
+      resetQualityControls();
+      
+      // Masquer les résultats de recherche
+      document.getElementById("results").style.display = "none";
+      document.getElementById("barcodeInput").value = "";
+    }
+
+    function showBookingComplete() {
+      // Afficher la section des rapports
+      document.getElementById("step8").classList.remove("active");
+      document.getElementById("step8").classList.add("hidden");
+      document.getElementById("step7").classList.remove("active");
+      document.getElementById("step7").classList.add("hidden");
+      document.getElementById("step6").classList.remove("active");
+      document.getElementById("step6").classList.add("hidden");
+      document.getElementById("step5").classList.remove("active");
+      document.getElementById("step5").classList.add("hidden");
+      
+      document.getElementById("step9").classList.remove("hidden");
+      document.getElementById("step9").classList.add("active");
+      
+      // Mettre à jour les informations finales
+      updateFinalBookingInfo();
+      
+      // Scroll vers la section des rapports
+      document.getElementById("step9").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function updateFinalBookingInfo() {
+      const totalReferences = bookingReferences.length;
+      const completedCount = completedReferences.size;
+      
+      document.getElementById("reportsBookingInfo").innerHTML = `
+        <h4>🎉 Booking ${currentBooking.number} terminé !</h4>
+        <strong>Références contrôlées :</strong> ${completedCount} / ${totalReferences}<br/>
+        <strong>Statut :</strong> ${completedCount === totalReferences ? 'Contrôle complet' : 'Contrôle partiel'}
+      `;
+    }
+
+    function generateIndividualReports() {
+      alert("🚧 Génération des rapports individuels en cours de développement...");
+    }
+
+    function generateGlobalBookingReport() {
+      alert("🚧 Génération du rapport global en cours de développement...");
+    }
+
+    function startNewBooking() {
+      if (confirm("🆕 Commencer un nouveau booking ?\n\nToutes les données actuelles seront perdues.")) {
+        // Réinitialiser complètement l'application
+        resetApplication();
+        
+        // Retourner à l'étape de sélection de booking
+        document.getElementById("step9").classList.remove("active");
+        document.getElementById("step9").classList.add("hidden");
+        document.getElementById("step3").classList.remove("completed");
+        document.getElementById("step3").classList.add("active");
+        
+        // Scroll vers la sélection de booking
+        document.getElementById("step3").scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function resetApplication() {
+      // Réinitialiser toutes les variables
+      currentBooking = null;
+      bookingReferences = [];
+      currentReferenceIndex = 0;
+      completedReferences.clear();
+      bookingQualityResults = {};
+      
+      resetCurrentControlState();
+      
+      // Réinitialiser l'affichage des bookings
+      displayBookings();
+      document.getElementById('bookingSearchInput').value = '';
+    }
+
+    function resetQualityControl() {
+      // Arrêter tous les scanners actifs
+      if (window.isScanning) stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      if (currentBooking) {
+        // En mode booking, retourner à la sélection de référence
+        resetCurrentControlState();
+        
+        // Retourner à l'étape de sélection de référence
+        document.getElementById("step8").classList.add("hidden");
+        document.getElementById("step8").classList.remove("active");
+        document.getElementById("step7").classList.add("hidden");
+        document.getElementById("step7").classList.remove("active");
+        document.getElementById("step6").classList.add("hidden");
+        document.getElementById("step6").classList.remove("active");
+        document.getElementById("step5").classList.add("hidden");
+        document.getElementById("step5").classList.remove("active");
+        
+        document.getElementById("step4").classList.remove("completed");
+        document.getElementById("step4").classList.add("active");
+        
+        // Scroll vers la section de sélection des références
+        document.getElementById("step4").scrollIntoView({ behavior: 'smooth' });
+      } else {
+        // Mode normal, retourner au début
+        resetCurrentControlState();
+        
+        document.getElementById("step8").classList.add("hidden");
+        document.getElementById("step7").classList.add("hidden");
+        document.getElementById("step6").classList.add("hidden");
+        document.getElementById("step5").classList.remove("completed");
+        document.getElementById("step5").classList.add("active");
+        
+        document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    // Fonction pour ajouter des photos à un critère
+    function addPhotos(criterionName) {
+      const fileInput = document.getElementById(`photoInput_${criterionName}`);
+      const files = fileInput.files;
+      
+      if (!files || files.length === 0) {
+        alert("⚠️ Veuillez sélectionner au moins une photo");
+        return;
+      }
+
+      // Initialiser le tableau de photos pour ce critère si nécessaire
+      if (!criterionPhotos[criterionName]) {
+        criterionPhotos[criterionName] = [];
+      }
+
+      // Traiter chaque fichier sélectionné
+      Array.from(files).forEach(file => {
+        // Vérifier le type de fichier
+        if (!file.type.startsWith('image/')) {
+          alert(`❌ Le fichier "${file.name}" n'est pas une image valide`);
+          return;
+        }
+
+        // Vérifier la taille (limite à 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`❌ Le fichier "${file.name}" est trop volumineux (max 5MB)`);
+          return;
+        }
+
+        // Lire et convertir le fichier en base64
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const photoData = {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            data: e.target.result, // Base64
+            timestamp: new Date().toLocaleString('fr-FR')
+          };
+
+          criterionPhotos[criterionName].push(photoData);
+          displayPhotos(criterionName);
+        };
+
+        reader.onerror = function() {
+          alert(`❌ Erreur lors de la lecture du fichier "${file.name}"`);
+        };
+
+        reader.readAsDataURL(file);
+      });
+
+      // Vider l'input file après traitement
+      fileInput.value = '';
+    }
+
+    // Fonction pour afficher les photos d'un critère
+    function displayPhotos(criterionName) {
+      const photosContainer = document.getElementById(`photos_${criterionName}`);
+      const photos = criterionPhotos[criterionName] || [];
+
+      if (photos.length === 0) {
+        photosContainer.innerHTML = '';
+        return;
+      }
+
+      photosContainer.innerHTML = photos.map((photo, index) => `
+        <div class="photo-item">
+          <img src="${photo.data}" alt="${photo.name}" />
+          <button class="photo-remove" onclick="removePhoto('${criterionName}', ${index})" title="Supprimer cette photo">
+            ×
+          </button>
+          <div class="photo-timestamp">${photo.timestamp}</div>
+        </div>
+      `).join('');
+    }
+
+    // Fonction pour supprimer une photo
+    function removePhoto(criterionName, photoIndex) {
+      if (!criterionPhotos[criterionName]) return;
+
+      if (confirm("🗑️ Êtes-vous sûr de vouloir supprimer cette photo ?")) {
+        criterionPhotos[criterionName].splice(photoIndex, 1);
+        displayPhotos(criterionName);
+        
+        // Vibration de confirmation si supportée
+        if (navigator.vibrate) {
+          navigator.vibrate(100);
+        }
+      }
+    }
+
+    // Fonction pour initialiser tous les conteneurs de photos
+    function initializePhotoContainers() {
+      const criterionNames = [
+        'shipping_mark', 'package_condition', 'warranty_seal',
+        'zip_test', 'button_check', 'color_check', 'finishing_check'
+      ];
+
+      criterionNames.forEach(criterionName => {
+        if (!criterionPhotos[criterionName]) {
+          criterionPhotos[criterionName] = [];
+        }
+      });
+    }
+
+    // Initialiser les conteneurs de photos au chargement de la page
+    document.addEventListener('DOMContentLoaded', function() {
+      initializePhotoContainers();
+      
+      const barcodeInput = document.getElementById('barcodeInput');
+      if (barcodeInput) {
+        barcodeInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            findProduct();
+          }
+        });
+      }
+
+      const eanInput = document.getElementById('eanInput');
+      if (eanInput) {
+        eanInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            checkEanForReference();
+          }
+        });
+      }
+    });
+
+    // Initialisation au chargement de la page
+    document.addEventListener('DOMContentLoaded', function() {
+      const barcodeInput = document.getElementById('barcodeInput');
+      if (barcodeInput) {
+        barcodeInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            findProduct();
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
