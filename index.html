@@ -2453,6 +2453,10 @@
       const currentRef = bookingReferences[currentReferenceIndex];
       if (currentRef) {
         completedReferences.add(currentRef.reference);
+        
+        // Mettre à jour immédiatement l'affichage
+        updateBookingProgress();
+        displayBookingReferences();
       }
       
       // Passer à la référence suivante
@@ -2492,13 +2496,15 @@
       // Passer à la référence suivante
       currentReferenceIndex++;
       
+      // Toujours mettre à jour l'affichage de la progression
+      updateBookingProgress();
+      displayBookingReferences();
+      
       if (currentReferenceIndex >= bookingReferences.length) {
         // Toutes les références ont été traitées
         showBookingComplete();
       } else {
-        // Mettre à jour l'affichage et retourner au scan
-        updateBookingProgress();
-        displayBookingReferences();
+        // Mettre à jour les informations et retourner au scan
         updateCurrentControlInfo();
         
         // Retourner à l'étape de scan
@@ -2537,6 +2543,10 @@
     }
 
     function showBookingComplete() {
+      // Mettre à jour une dernière fois la progression avant d'afficher les rapports
+      updateBookingProgress();
+      displayBookingReferences();
+      
       // Afficher la section des rapports
       document.getElementById("step8").classList.remove("active");
       document.getElementById("step8").classList.add("hidden");
