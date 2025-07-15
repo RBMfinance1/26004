@@ -3,33 +3,150 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
-  <title>Matrice Contrôle Qualité - Booking</title>
+  <title>Matrice Contrôle Qualité - v2.1</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  
+  <script>
+    // ================================================================================================
+    // 🔧 CONFIGURATION DES COLONNES - MODIFIEZ ICI SELON VOTRE FICHIER DE BOOKING
+    // ================================================================================================
+    
+    // 📋 Configuration pour le fichier de BOOKING (fichier Excel .xlsx)
+    // ⚠️  IMPORTANT: Les index de colonnes commencent à 0 (A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, etc.)
+    
+    const BOOKING_COL_CODE_ARTICLE = 7;    // 📍 Colonne H (index 7) = Code Article
+    const BOOKING_COL_BOOKING_NUMBER = 13; // 📍 Colonne N (index 13) = Numéro de Booking
+    
+    // 💡 Pour modifier ces colonnes selon votre fichier :
+    // - Si votre code article est en colonne C, mettez : BOOKING_COL_CODE_ARTICLE = 2
+    // - Si votre numéro booking est en colonne F, mettez : BOOKING_COL_BOOKING_NUMBER = 5
+    // - Référence : A=0, B=1, C=2, D=3, E=4, F=5, G=6, H=7, I=8, J=9, K=10, L=11, M=12, N=13, etc.
+    
+    // 📊 Configuration pour le fichier de BDD (fichier CSV .csv)
+    // ⚠️  Ces colonnes sont généralement fixes mais vous pouvez les ajuster si nécessaire
+    
+    const COL_REF = 0;      // 📍 Colonne A = Référence produit
+    const COL_CODE = 1;     // 📍 Colonne B = Code article  
+    const COL_COULEUR = 2;  // 📍 Colonne C = Couleur
+    const COL_TAILLE = 4;   // 📍 Colonne E = Taille
+    const COL_MARQUE = 7;   // 📍 Colonne H = Marque
+    const COL_EAN = 10;     // 📍 Colonne K = Code EAN
+    
+    // ================================================================================================
+    // 🔚 FIN DE LA CONFIGURATION - Ne modifiez pas le code en dessous sauf si nécessaire
+    // ================================================================================================
+
+    // Classe pour gérer les notifications
+    window.NotificationManager = class {
+      static show(message, type = 'info', duration = 3000) {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+          <div class="notification-content">
+            <span class="notification-icon">${this.getIcon(type)}</span>
+            <span class="notification-message">${message}</span>
+            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+          </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Animation d'entrée
+        setTimeout(() => notification.classList.add('show'), 100);
+        
+        // Suppression automatique
+        setTimeout(() => {
+          notification.classList.remove('show');
+          setTimeout(() => notification.remove(), 300);
+        }, duration);
+      }
+      
+      static getIcon(type) {
+        const icons = {
+          success: '✅',
+          error: '❌',
+          warning: '⚠️',
+          info: 'ℹ️'
+        };
+        return icons[type] || 'ℹ️';
+      }
+    };
+
+    // Gestionnaire de stockage local amélioré
+    window.StorageManager = class {
+      static save(key, data) {
+        try {
+          const serialized = JSON.stringify(data);
+          localStorage.setItem(`qc_${key}`, serialized);
+          return true;
+        } catch (error) {
+          console.error('Erreur sauvegarde:', error);
+          return false;
+        }
+      }
+      
+      static load(key) {
+        try {
+          const serialized = localStorage.getItem(`qc_${key}`);
+          return serialized ? JSON.parse(serialized) : null;
+        } catch (error) {
+          console.error('Erreur chargement:', error);
+          return null;
+        }
+      }
+      
+      static remove(key) {
+        try {
+          localStorage.removeItem(`qc_${key}`);
+          return true;
+        } catch (error) {
+          console.error('Erreur suppression:', error);
+          return false;
+        }
+      }
+      
+      static clear() {
+        try {
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('qc_')) {
+              localStorage.removeItem(key);
+            }
+          });
+          return true;
+        } catch (error) {
+          console.error('Erreur nettoyage:', error);
+          return false;
+        }
+      }
+    };
+
+    // Variables globales pour les scanners
+    let codeReader = null;
+    let eanCodeReader = null;
+    window.isScanning = false;
+    window.isEanScanning = false;
+  </script>
+  
   <script type="module">
     import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
 
-    let codeReader = null;
-    let isScanning = false;
-
-    // Exposer BrowserMultiFormatReader et les variables globalement
+    // Exposer BrowserMultiFormatReader globalement
     window.BrowserMultiFormatReader = BrowserMultiFormatReader;
-    window.isScanning = false;
-    window.isEanScanning = false;
 
-    // Scanner via flux vidéo en temps réel
+    // Scanner amélioré avec gestion d'erreurs
     window.startCamera = async function() {
       const video = document.getElementById('video');
       const scanButton = document.getElementById('scanButton');
       const stopButton = document.getElementById('stopButton');
       
       try {
-        if (codeReader) {
-          codeReader.reset();
+        if (window.codeReader) {
+          window.codeReader.reset();
         }
         
-        codeReader = new BrowserMultiFormatReader();
+        window.codeReader = new window.BrowserMultiFormatReader();
         const constraints = {
           video: {
             facingMode: 'environment',
@@ -38,14 +155,15 @@
           }
         };
         
-        await codeReader.decodeFromConstraints(constraints, video, (result, err) => {
+        await window.codeReader.decodeFromConstraints(constraints, video, (result, err) => {
           if (result && window.isScanning) {
             document.getElementById("barcodeInput").value = result.text;
-            stopCamera();
+            window.stopCamera();
             findProduct();
             if (navigator.vibrate) {
               navigator.vibrate(200);
             }
+            window.NotificationManager.show('Code scanné avec succès!', 'success');
           }
         });
         
@@ -57,7 +175,7 @@
         
       } catch (err) {
         console.error('Erreur caméra:', err);
-        alert('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
+        window.NotificationManager.show('Impossible d\'accéder à la caméra. Vérifiez les permissions.', 'error');
         resetCameraButtons();
       }
     };
@@ -76,13 +194,13 @@
         }
       }
       
-      if (codeReader) {
+      if (window.codeReader) {
         try {
-          codeReader.reset();
+          window.codeReader.reset();
         } catch (e) {
           console.log('Erreur lors de l\'arrêt de la caméra:', e);
         }
-        codeReader = null;
+        window.codeReader = null;
       }
       
       resetCameraButtons();
@@ -102,6 +220,7 @@
       document.getElementById('scannerContainer').style.display = 'none';
     }
   </script>
+  
   <style>
     * {
       box-sizing: border-box;
@@ -134,12 +253,78 @@
       font-size: 1.5em;
     }
     
+    /* Notifications améliorées */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+      transform: translateX(400px);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+      max-width: 350px;
+      border-left: 4px solid;
+    }
+    
+    .notification.show {
+      transform: translateX(0);
+    }
+    
+    .notification-success {
+      border-left-color: #28a745;
+    }
+    
+    .notification-error {
+      border-left-color: #dc3545;
+    }
+    
+    .notification-warning {
+      border-left-color: #ffc107;
+    }
+    
+    .notification-info {
+      border-left-color: #17a2b8;
+    }
+    
+    .notification-content {
+      display: flex;
+      align-items: center;
+      padding: 15px;
+      gap: 10px;
+    }
+    
+    .notification-icon {
+      font-size: 1.2em;
+    }
+    
+    .notification-message {
+      flex: 1;
+      font-size: 0.9em;
+    }
+    
+    .notification-close {
+      background: none;
+      border: none;
+      font-size: 1.2em;
+      cursor: pointer;
+      color: #6c757d;
+      padding: 0;
+      margin-left: 10px;
+    }
+    
+    .notification-close:hover {
+      color: #000;
+    }
+    
     .section {
       margin-bottom: 20px;
       padding: 15px;
       border: 1px solid #e0e0e0;
       border-radius: 10px;
       background: #f8f9fa;
+      transition: all 0.3s ease;
     }
     
     .section h3 {
@@ -151,6 +336,7 @@
     .section.active {
       border-color: #667eea;
       background: #f0f3ff;
+      transform: scale(1.02);
     }
     
     .section.completed {
@@ -165,6 +351,15 @@
       border-radius: 8px;
       border: 1px solid #ccc;
       font-size: 16px;
+      transition: border-color 0.3s ease;
+    }
+    
+    input[type="file"]:focus, 
+    input[type="text"]:focus, 
+    select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 5px rgba(102, 126, 234, 0.3);
     }
     
     button {
@@ -178,6 +373,12 @@
       font-weight: bold;
       font-size: 14px;
       min-height: 44px;
+      transition: all 0.3s ease;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
     }
     
     button:active {
@@ -187,6 +388,8 @@
     button:disabled {
       background: #6c757d;
       cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
     
     .button-row {
@@ -200,19 +403,327 @@
       min-width: 120px;
     }
     
+    /* Styles pour la section d'aide */
+    .help-section {
+      background: linear-gradient(135deg, #e8f5e8, #f0f8ff);
+      border: 1px solid #4caf50;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .help-section h4 {
+      margin: 0 0 15px 0;
+      color: #2e7d32;
+      font-size: 1.1em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .help-content {
+      display: grid;
+      gap: 12px;
+    }
+    
+    .help-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.7);
+      border-radius: 8px;
+      border-left: 3px solid #4caf50;
+    }
+    
+    .help-icon {
+      font-size: 1.2em;
+      min-width: 24px;
+      text-align: center;
+    }
+    
+    .help-text {
+      flex: 1;
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+    
+    .help-text strong {
+      color: #2e7d32;
+      font-weight: 600;
+    }
+    
+    /* Styles pour la section de réinitialisation du cache */
+    .cache-reset-section {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #4caf50;
+      text-align: center;
+    }
+    
+    .cache-reset-btn {
+      background: linear-gradient(135deg, #ff6b6b, #ee5a52) !important;
+      font-size: 0.85em !important;
+      padding: 8px 15px !important;
+      min-height: auto !important;
+      margin: 0 0 8px 0 !important;
+      transition: all 0.3s ease;
+    }
+    
+    .cache-reset-btn:hover {
+      background: linear-gradient(135deg, #ff5252, #e53935) !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+    }
+    
+    .cache-reset-section small {
+      color: #666;
+      font-size: 0.8em;
+      display: block;
+    }
+    
+    /* Styles pour la nouvelle interface de chargement */
+    .files-status {
+      margin: 20px 0;
+      display: grid;
+      gap: 15px;
+    }
+    
+    .file-status-item {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 10px;
+      padding: 15px;
+      transition: all 0.3s ease;
+    }
+    
+    .file-status-item.loaded {
+      background: linear-gradient(135deg, #d4edda, #c3e6cb);
+      border-color: #28a745;
+    }
+    
+    .file-status-item.error {
+      background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+      border-color: #dc3545;
+    }
+    
+    .file-status-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .file-status-header h4 {
+      margin: 0;
+      color: #495057;
+      font-size: 1.1em;
+    }
+    
+    .file-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .reload-btn {
+      background: #6c757d !important;
+      padding: 6px 12px !important;
+      font-size: 0.8em !important;
+      min-height: auto !important;
+      margin: 0 !important;
+    }
+    
+    .reload-btn:hover {
+      background: #545b62 !important;
+      transform: translateY(-1px);
+    }
+    
+    .reload-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    
+    .status-display {
+      font-size: 0.9em;
+      padding: 8px 12px;
+      border-radius: 5px;
+      background: #e9ecef;
+      color: #495057;
+      min-height: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .status-display.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status-display.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .status-display.loading {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    
+    .global-status {
+      margin-top: 20px;
+      padding: 20px;
+      background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+      border-radius: 10px;
+      border: 1px solid #2196f3;
+      text-align: center;
+    }
+    
+    .global-status.ready {
+      background: linear-gradient(135deg, #d4edda, #c3e6cb);
+      border-color: #28a745;
+    }
+    
+    .global-status-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 15px;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    
+    .continue-button {
+      background: linear-gradient(135deg, #28a745, #20c997) !important;
+      font-size: 1.1em !important;
+      padding: 15px 30px !important;
+      min-height: auto !important;
+    }
+    
+    .continue-button:disabled {
+      background: #6c757d !important;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    
+    .manual-download {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+    }
+    
+    .manual-download h5 {
+      margin: 0 0 10px 0;
+      color: #856404;
+    }
+    
+    .download-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+    }
+    
+    .download-link {
+      background: #007bff;
+      color: white;
+      padding: 8px 15px;
+      text-decoration: none;
+      border-radius: 5px;
+      font-size: 0.9em;
+      display: inline-block;
+    }
+    
+    .download-link:hover {
+      background: #0056b3;
+      color: white;
+      text-decoration: none;
+    }
+    
+    /* Améliorations visuelles pour les sections importantes */
+    .progress-section {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 15px;
+      padding: 20px;
+      margin: 15px 0;
+      color: white;
+      text-align: center;
+    }
+    
+    .progress-section h4 {
+      margin: 0 0 15px 0;
+      font-size: 1.2em;
+    }
+    
+    .progress-bar-container {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 15px;
+      height: 25px;
+      overflow: hidden;
+      margin: 15px 0;
+      position: relative;
+    }
+    
+    .progress-bar-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.5s ease;
+      border-radius: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 0.9em;
+      position: relative;
+    }
+    
+    .progress-bar-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(
+        90deg, 
+        transparent, 
+        rgba(255,255,255,0.3), 
+        transparent
+      );
+      animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    
+    /* Scanner amélioré */
     #scannerContainer {
       display: none;
       text-align: center;
       margin: 15px 0;
+      position: relative;
     }
     
     #video, #eanVideo {
       width: 100%;
       max-width: 400px;
       height: 300px;
-      border: 2px solid #667eea;
-      border-radius: 10px;
+      border: 3px solid #667eea;
+      border-radius: 15px;
       object-fit: cover;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
     
     .scanner-overlay {
@@ -227,86 +738,110 @@
       transform: translate(-50%, -50%);
       width: 250px;
       height: 150px;
-      border: 2px solid #00ff00;
-      border-radius: 10px;
+      border: 3px solid #00ff00;
+      border-radius: 15px;
       pointer-events: none;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); }
+      70% { box-shadow: 0 0 0 20px rgba(0, 255, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); }
     }
     
     .scanner-corners {
       position: absolute;
+      width: 25px;
+      height: 25px;
+      border: 4px solid #00ff00;
+    }
+    
+    .corner-tl { top: -4px; left: -4px; border-right: none; border-bottom: none; }
+    .corner-tr { top: -4px; right: -4px; border-left: none; border-bottom: none; }
+    .corner-bl { bottom: -4px; left: -4px; border-right: none; border-top: none; }
+    .corner-br { bottom: -4px; right: -4px; border-left: none; border-top: none; }
+    
+    /* Indicateurs de statut améliorés */
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse-status 2s infinite;
+    }
+    
+    .status-indicator.pending {
+      background: #ffc107;
+    }
+    
+    .status-indicator.success {
+      background: #28a745;
+    }
+    
+    .status-indicator.error {
+      background: #dc3545;
+    }
+    
+    @keyframes pulse-status {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    
+    /* Loading spinner */
+    .loading-spinner {
+      display: inline-block;
       width: 20px;
       height: 20px;
-      border: 3px solid #00ff00;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
     }
     
-    .corner-tl { top: -2px; left: -2px; border-right: none; border-bottom: none; }
-    .corner-tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
-    .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
-    .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
     
-    #results, #productListContainer, #qualityControlSection {
-      margin-top: 15px;
-      padding: 15px;
+    /* Styles pour les listes de booking et produits */
+    .booking-list {
+      max-height: 300px;
+      overflow-y: auto;
       border: 1px solid #ddd;
-      border-radius: 10px;
-      background: #f8f9fa;
+      border-radius: 5px;
+      margin: 10px 0;
     }
     
-    .item {
+    .booking-item, .product-item {
       padding: 12px;
-      border-bottom: 1px solid #ccc;
-      line-height: 1.4;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+      transition: all 0.3s ease;
     }
     
-    .item:last-child {
+    .booking-item:hover, .product-item:hover {
+      background-color: #e9ecef;
+      transform: translateX(5px);
+    }
+    
+    .booking-item:last-child, .product-item:last-child {
       border-bottom: none;
     }
     
-    .item strong {
-      color: #667eea;
-      font-size: 1.1em;
-    }
-    
-    #fileStatus, #bookingFileStatus {
-      color: #28a745;
-      font-weight: bold;
-      margin: 10px 0;
-    }
-    
-    .scan-instruction {
-      text-align: center;
-      color: #666;
-      font-size: 0.9em;
-      margin: 10px 0;
-    }
-    
-    #searchInput, #bookingSearchInput {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-      font-size: 14px;
-    }
-    
-    .product-item, .booking-item {
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    
-    .product-item:hover, .booking-item:hover {
-      background-color: #e9ecef;
-    }
-    
-    .product-ref, .booking-ref {
+    .booking-ref, .product-ref {
       font-weight: bold;
       color: #667eea;
       font-size: 1.1em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     
-    .product-details, .booking-details {
+    .booking-details, .product-details {
       font-size: 0.9em;
       color: #666;
       margin-top: 5px;
@@ -319,6 +854,142 @@
       font-style: italic;
     }
     
+    /* Styles pour les informations de booking */
+    .current-booking-info {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 15px 0;
+      text-align: center;
+    }
+    
+    .current-booking-info h4 {
+      margin: 0 0 10px 0;
+      font-size: 1.2em;
+    }
+    
+    /* Styles pour la liste des références */
+    .reference-list {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    
+    .reference-list h4 {
+      margin: 0 0 15px 0;
+      color: #495057;
+    }
+    
+    .reference-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px;
+      border: 2px solid #e9ecef;
+      border-radius: 15px;
+      margin: 15px 0;
+      background: #f8f9fa;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .reference-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+      transition: left 0.5s ease;
+    }
+    
+    .reference-item:hover::before {
+      left: 100%;
+    }
+    
+    .reference-item:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+    
+    .reference-item.completed {
+      background: linear-gradient(135deg, #d4edda, #c3e6cb);
+      border-color: #28a745;
+    }
+    
+    .reference-item.current {
+      background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+      border-color: #ffc107;
+      box-shadow: 0 5px 20px rgba(255, 193, 7, 0.4);
+    }
+    
+    .reference-info {
+      flex: 1;
+    }
+    
+    .reference-code {
+      font-weight: bold;
+      color: #495057;
+      font-size: 1.1em;
+    }
+    
+    .reference-details {
+      font-size: 0.9em;
+      color: #6c757d;
+      margin-top: 5px;
+    }
+    
+    .reference-status {
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 0.9em;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .reference-status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+    
+    .reference-status.completed {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .reference-status.current {
+      background: #cce5ff;
+      color: #004085;
+    }
+    
+    /* Styles pour les boutons de navigation */
+    .navigation-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #ddd;
+    }
+    
+    .navigation-buttons button {
+      min-width: 150px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    /* Styles pour les critères de qualité */
     .quality-criterion {
       background: white;
       border: 1px solid #ddd;
@@ -388,266 +1059,7 @@
       color: #0c5460;
     }
     
-    .hidden {
-      display: none;
-    }
-    
-    .booking-progress {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      border-radius: 10px;
-      padding: 20px;
-      margin: 15px 0;
-      color: white;
-      text-align: center;
-    }
-
-    .booking-progress h4 {
-      margin: 0 0 15px 0;
-      font-size: 1.2em;
-    }
-
-    .booking-progress-bar {
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 15px;
-      height: 25px;
-      overflow: hidden;
-      margin: 15px 0;
-    }
-
-    .booking-progress-fill {
-      background: linear-gradient(90deg, #28a745, #20c997);
-      height: 100%;
-      width: 0%;
-      transition: width 0.5s ease;
-      border-radius: 15px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: bold;
-      font-size: 0.9em;
-    }
-
-    .reference-list {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-
-    .reference-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 15px;
-      border: 2px solid #e9ecef;
-      border-radius: 10px;
-      margin: 10px 0;
-      background: #f8f9fa;
-      transition: all 0.3s ease;
-      cursor: move;
-    }
-
-    .reference-item.completed {
-      background: #d4edda;
-      border-color: #c3e6cb;
-    }
-
-    .reference-item.current {
-      background: #fff3cd;
-      border-color: #ffeaa7;
-      box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
-    }
-
-    .reference-info {
-      flex: 1;
-    }
-
-    .reference-code {
-      font-weight: bold;
-      color: #495057;
-      font-size: 1.1em;
-    }
-
-    .reference-details {
-      font-size: 0.9em;
-      color: #6c757d;
-      margin-top: 5px;
-    }
-
-    .reference-status {
-      padding: 8px 15px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 0.9em;
-    }
-
-    .reference-status.pending {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .reference-status.completed {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .reference-status.current {
-      background: #cce5ff;
-      color: #004085;
-    }
-
-    .booking-selection {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-
-    .booking-list {
-      max-height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      margin: 10px 0;
-    }
-
-    .current-booking-info {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: white;
-      padding: 15px;
-      border-radius: 10px;
-      margin: 15px 0;
-      text-align: center;
-    }
-
-    .ean-progress {
-      background: #e8f4f8;
-      border: 1px solid #bee5eb;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 15px;
-      text-align: center;
-    }
-
-    .ean-progress h4 {
-      margin: 0 0 10px 0;
-      color: #0c5460;
-    }
-
-    .progress-bar {
-      background: #e9ecef;
-      border-radius: 10px;
-      height: 20px;
-      overflow: hidden;
-      margin: 10px 0;
-    }
-
-    .progress-fill {
-      background: linear-gradient(90deg, #28a745, #20c997);
-      height: 100%;
-      width: 0%;
-      transition: width 0.3s ease;
-      border-radius: 10px;
-    }
-
-    .progress-text {
-      font-weight: bold;
-      color: #495057;
-      margin-top: 5px;
-    }
-
-    .ean-scanner-section, .ean-list-section {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-
-    .ean-scanner-section h4, .ean-list-section h4 {
-      margin: 0 0 15px 0;
-      color: #495057;
-    }
-
-    .ean-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px;
-      border: 1px solid #dee2e6;
-      border-radius: 8px;
-      margin: 8px 0;
-      transition: all 0.3s ease;
-    }
-
-    .ean-item.checked {
-      background: #d4edda;
-      border-color: #c3e6cb;
-    }
-
-    .ean-item.checked .ean-status {
-      color: #155724;
-    }
-
-    .ean-details {
-      flex: 1;
-    }
-
-    .ean-code {
-      font-family: monospace;
-      font-weight: bold;
-      color: #495057;
-      font-size: 1.1em;
-    }
-
-    .ean-info {
-      font-size: 0.9em;
-      color: #6c757d;
-      margin-top: 3px;
-    }
-
-    .ean-status {
-      font-weight: bold;
-      padding: 5px 10px;
-      border-radius: 5px;
-      font-size: 0.9em;
-    }
-
-    .ean-status.pending {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .ean-status.found {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .validation-summary {
-      background: #f8f9fa;
-      border: 1px solid #dee2e6;
-      border-radius: 8px;
-      padding: 15px;
-      margin: 15px 0;
-    }
-
-    .validation-summary.success {
-      background: #d4edda;
-      border-color: #c3e6cb;
-    }
-
-    .validation-summary.warning {
-      background: #fff3cd;
-      border-color: #ffeaa7;
-    }
-
-    .validation-summary h4 {
-      margin: 0 0 10px 0;
-    }
-
+    /* Styles pour les photos */
     .photo-section {
       margin-top: 10px;
       padding: 10px;
@@ -747,10 +1159,167 @@
       background: rgba(248, 249, 250, 0.9);
     }
     
+    /* Styles pour le contrôle EAN */
+    .ean-progress {
+      background: #e8f4f8;
+      border: 1px solid #bee5eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .ean-progress h4 {
+      margin: 0 0 10px 0;
+      color: #0c5460;
+    }
+
+    .progress-bar {
+      background: #e9ecef;
+      border-radius: 10px;
+      height: 20px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+
+    .progress-fill {
+      background: linear-gradient(90deg, #28a745, #20c997);
+      height: 100%;
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 10px;
+    }
+
+    .progress-text {
+      font-weight: bold;
+      color: #495057;
+      margin-top: 5px;
+    }
+
+    .ean-scanner-section, .ean-list-section {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .ean-scanner-section h4, .ean-list-section h4 {
+      margin: 0 0 15px 0;
+      color: #495057;
+    }
+
+    .ean-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      margin: 8px 0;
+      transition: all 0.3s ease;
+    }
+
+    .ean-item.checked {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+
+    .ean-item.checked .ean-status {
+      color: #155724;
+    }
+
+    .ean-item.non-tested {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+    }
+
+    .ean-details {
+      flex: 1;
+    }
+
+    .ean-code {
+      font-family: monospace;
+      font-weight: bold;
+      color: #495057;
+      font-size: 1.1em;
+    }
+
+    .ean-info {
+      font-size: 0.9em;
+      color: #6c757d;
+      margin-top: 3px;
+    }
+
+    .ean-status {
+      font-weight: bold;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 0.9em;
+    }
+
+    .ean-status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .ean-status.found {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .ean-status.non-tested {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .validation-summary {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .validation-summary.success {
+      background: #d4edda;
+      border-color: #c3e6cb;
+    }
+
+    .validation-summary.warning {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+    }
+
+    .validation-summary h4 {
+      margin: 0 0 10px 0;
+    }
+    
+    /* Amélioration responsive */
     @media (max-width: 768px) {
       .container {
         padding: 15px;
         margin: 5px;
+      }
+      
+      .notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+        transform: translateY(-100px);
+      }
+      
+      .notification.show {
+        transform: translateY(0);
+      }
+      
+      .button-row {
+        flex-direction: column;
+      }
+      
+      .button-row button {
+        min-width: auto;
       }
       
       .radio-group {
@@ -769,30 +1338,89 @@
 </head>
 <body>
   <div class="container">
-    <h1>🔍 Matrice Contrôle Qualité - Booking</h1>
+    <h1>🔍 Matrice Contrôle Qualité - v2.1</h1>
 
-    <div class="section completed" id="step1">
-      <h3>1️⃣ Charger la base de données</h3>
-      <div class="button-row">
-        <button onclick="loadOnlineCSV()">🌐 Charger BDD en ligne</button>
-        <button onclick="document.getElementById('csvFile').click()">📁 Charger fichier local</button>
+    <div class="section" id="step1">
+      <h3>1️⃣ Charger les données</h3>
+      
+      <!-- Mode d'emploi -->
+      <div class="help-section">
+        <h4>📖 Mode d'emploi</h4>
+        <div class="help-content">
+          <div class="help-item">
+            <span class="help-icon">🌐</span>
+            <div class="help-text">
+              <strong>Boutons "En ligne"</strong> : Chargent automatiquement les fichiers depuis Internet (recommandé)
+            </div>
+          </div>
+          <div class="help-item">
+            <span class="help-icon">📁</span>
+            <div class="help-text">
+              <strong>Boutons "Local"</strong> : Permettent de sélectionner vos propres fichiers depuis votre ordinateur ou votre smartphone
+            </div>
+          </div>
+          <div class="help-item">
+            <span class="help-icon">🚀</span>
+            <div class="help-text">
+              <strong>Utilisation recommandée</strong> : 
+              1️⃣ Cliquez "🌐 En ligne" pour la BDD 
+              2️⃣ Puis "🌐 En ligne" pour le BOOKING
+            </div>
+          </div>
+        </div>
+        
+        <!-- Bouton de réinitialisation du cache -->
+        <div class="cache-reset-section">
+          <button onclick="resetCache()" class="cache-reset-btn" title="Efface les fichiers sauvegardés et recommence">
+            🗑️ Vider le cache
+          </button>
+          <small>Efface les fichiers sauvegardés pour recommencer</small>
+        </div>
       </div>
+      
+      <!-- Inputs fichiers cachés -->
       <input type="file" id="csvFile" accept=".csv" style="display:none;" onchange="loadCSV()" />
-      <div id="fileStatus"></div>
-    </div>
-
-    <div class="section" id="step2">
-      <h3>2️⃣ Charger le fichier de booking</h3>
-      <div class="button-row">
-        <button onclick="loadOnlineBooking()">🌐 Charger booking en ligne</button>
-        <button onclick="document.getElementById('bookingFile').click()">📁 Charger fichier local</button>
-      </div>
       <input type="file" id="bookingFile" accept=".xlsx,.xls" style="display:none;" onchange="loadBookingFile()" />
-      <div id="bookingFileStatus"></div>
+      
+      <!-- Statuts des fichiers -->
+      <div class="files-status">
+        <div class="file-status-item">
+          <div class="file-status-header">
+            <h4>📊 Base de Données (BDD)</h4>
+            <div class="file-actions">
+              <button onclick="loadOnlineCSV()" class="reload-btn" id="reloadBddBtn">🌐 En ligne</button>
+              <button onclick="document.getElementById('csvFile').click()" class="reload-btn">📁 Local</button>
+            </div>
+          </div>
+          <div id="bddStatus" class="status-display">⏳ En attente...</div>
+        </div>
+        
+        <div class="file-status-item">
+          <div class="file-status-header">
+            <h4>📋 Fichier de Booking</h4>
+            <div class="file-actions">
+              <button onclick="loadOnlineBooking()" class="reload-btn" id="reloadBookingBtn">🌐 En ligne</button>
+              <button onclick="document.getElementById('bookingFile').click()" class="reload-btn">📁 Local</button>
+            </div>
+          </div>
+          <div id="bookingStatus" class="status-display">⏳ En attente...</div>
+        </div>
+      </div>
+      
+      <!-- Statut global et bouton de continuation -->
+      <div class="global-status">
+        <div id="globalStatus" class="global-status-display">
+          <span class="status-indicator pending"></span>
+          Fichiers manquants : BDD et BOOKING
+        </div>
+        <button onclick="proceedToBookingSelection()" id="continueBtn" disabled class="continue-button">
+          ➡️ Continuer vers la sélection de booking
+        </button>
+      </div>
     </div>
 
-    <div class="section hidden" id="step3">
-      <h3>3️⃣ Sélectionner un booking</h3>
+    <div class="section hidden" id="step2">
+      <h3>2️⃣ Sélectionner un booking</h3>
       <div class="booking-selection">
         <h4>🔍 Rechercher un booking</h4>
         <input type="text" id="bookingSearchInput" placeholder="Rechercher par numéro de booking..." onkeyup="filterBookings()" />
@@ -800,17 +1428,17 @@
       </div>
     </div>
 
-    <div class="section hidden" id="step4">
-      <h3>4️⃣ Organiser les références du booking</h3>
+    <div class="section hidden" id="step3">
+      <h3>3️⃣ Organiser les références du booking</h3>
       
       <div class="current-booking-info" id="currentBookingInfo">
         <!-- Informations du booking sélectionné -->
       </div>
 
-      <div class="booking-progress" id="bookingProgressSection">
+      <div class="progress-section" id="bookingProgressSection">
         <h4>📊 Progression du booking</h4>
-        <div class="booking-progress-bar">
-          <div class="booking-progress-fill" id="bookingProgressFill">0%</div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="bookingProgressFill">0%</div>
         </div>
         <div id="bookingProgressText">0 / 0 références contrôlées</div>
       </div>
@@ -820,14 +1448,15 @@
         <div id="referencesList"></div>
       </div>
 
+      <!-- SEULS BOUTONS PRINCIPAUX ICI -->
       <div class="button-row">
         <button onclick="startBookingControl()" id="startBookingButton">🚀 Commencer le contrôle du booking</button>
         <button onclick="selectDifferentBooking()" style="background: #6c757d;">🔄 Choisir un autre booking</button>
       </div>
     </div>
 
-    <div class="section hidden" id="step5">
-      <h3>5️⃣ Scanner un code-barres</h3>
+    <div class="section hidden" id="step4">
+      <h3>4️⃣ Scanner un code-barres</h3>
       
       <div class="current-booking-info" id="currentControlInfo">
         <!-- Informations de contrôle en cours -->
@@ -862,12 +1491,17 @@
       <label>⌨️ Ou saisir manuellement :</label>
       <input type="text" id="barcodeInput" placeholder="Entrer un code EAN..." />
       <button onclick="findProduct()">🔍 Rechercher</button>
+      
+      <!-- NAVIGATION SIMPLIFIÉE SÉPARÉE -->
+      <div class="navigation-buttons">
+        <button onclick="selectDifferentBooking()" style="background: #6c757d;">⬅️ Retour aux bookings</button>
+      </div>
     </div>
 
     <div id="results" style="display:none;"></div>
 
-    <div class="section hidden" id="step6">
-      <h3>6️⃣ Contrôle Qualité - Carton</h3>
+    <div class="section hidden" id="step5">
+      <h3>5️⃣ Contrôle Qualité - Carton</h3>
       
       <div class="product-info" id="selectedProductInfo">
         <!-- Informations du produit sélectionné -->
@@ -953,8 +1587,8 @@
       </div>
     </div>
 
-    <div class="section hidden" id="step7">
-      <h3>7️⃣ Contrôle Qualité - Produit</h3>
+    <div class="section hidden" id="step6">
+      <h3>6️⃣ Contrôle Qualité - Produit</h3>
       
       <div class="product-info" id="productControlInfo">
         <!-- Informations du produit sélectionné -->
@@ -1072,8 +1706,8 @@
       </div>
     </div>
 
-    <div class="section hidden" id="step8">
-      <h3>8️⃣ Contrôle EAN - Référence</h3>
+    <div class="section hidden" id="step7">
+      <h3>7️⃣ Contrôle EAN - Référence</h3>
       
       <div class="product-info" id="eanControlInfo">
         <!-- Informations de la référence à contrôler -->
@@ -1129,8 +1763,8 @@
       </div>
     </div>
 
-    <div class="section hidden" id="step9">
-      <h3>9️⃣ Rapports</h3>
+    <div class="section hidden" id="step8">
+      <h3>8️⃣ Rapports</h3>
       
       <div class="current-booking-info" id="reportsBookingInfo">
         <!-- Informations du booking terminé -->
@@ -1146,63 +1780,290 @@
   </div>
 
   <script>
-    // Configuration des colonnes (H=7, N=13)
-    const BOOKING_COL_CODE_ARTICLE = 7;  // Colonne H pour le code article
-    const BOOKING_COL_BOOKING_NUMBER = 13; // Colonne N pour le numéro de booking
+    // ================================================================================================
+    // 📋 VARIABLES GLOBALES DE L'APPLICATION
+    // ================================================================================================
+    
+    // Variables pour le stockage des données
+    let database = [];                  // Base de données des produits (BDD.csv)
+    let bookingData = [];              // Données du fichier de booking (.xlsx)
+    let availableBookings = [];        // Liste des bookings disponibles
+    
+    // Variables pour le contrôle qualité
+    let currentProduct = null;         // Produit actuellement sélectionné
+    let packageQualityResults = {};    // Résultats contrôle carton
+    let productQualityResults = {};    // Résultats contrôle produit
+    let criterionPhotos = {};          // Photos des critères
+    
+    // Variables pour le contrôle des références et EAN
+    let currentReference = null;       // Référence en cours de contrôle
+    let referenceEanList = [];        // Liste des EAN de la référence
+    let checkedEans = new Set();      // EAN vérifiés
+    let nonTestedEans = new Set();    // EAN non testés
+    
+    // Variables pour la gestion des bookings
+    let currentBooking = null;         // Booking actuellement sélectionné
+    let bookingReferences = [];       // Références du booking en cours
+    let currentReferenceIndex = 0;    // Index de la référence en cours
+    let completedReferences = new Set(); // Références terminées
+    let bookingQualityResults = {};   // Résultats de tout le booking
 
-    // Variables existantes
-    let database = [];
-    let currentProduct = null;
-    let packageQualityResults = {};
-    let productQualityResults = {};
-    let currentReference = null;
-    let referenceEanList = [];
-    let checkedEans = new Set();
-    let nonTestedEans = new Set();
-    let eanCodeReader = null;
-    let criterionPhotos = {};
+    // Variables pour le statut des fichiers
+    let bddLoaded = false;            // État du chargement de la BDD
+    let bookingLoaded = false;        // État du chargement du booking
 
-    // Nouvelles variables pour le booking
-    let bookingData = [];
-    let availableBookings = [];
-    let currentBooking = null;
-    let bookingReferences = [];
-    let currentReferenceIndex = 0;
-    let completedReferences = new Set();
-    let bookingQualityResults = {}; // Stockage de tous les résultats du booking
+    // ================================================================================================
+    // 🗑️ FONCTION DE RÉINITIALISATION DU CACHE
+    // ================================================================================================
 
-    // Constantes pour la BDD.csv
-    const COL_REF = 0;
-    const COL_CODE = 1;
-    const COL_COULEUR = 2;
-    const COL_TAILLE = 4;
-    const COL_MARQUE = 7;
-    const COL_EAN = 10;
+    function resetCache() {
+      if (confirm("🗑️ Êtes-vous sûr de vouloir vider le cache ?\n\nCela effacera tous les fichiers sauvegardés et vous devrez les recharger.")) {
+        try {
+          // Arrêter tous les scanners actifs
+          if (window.isScanning) window.stopCamera();
+          if (window.isEanScanning) stopEanScanner();
+          
+          // Vider complètement le cache localStorage
+          window.StorageManager.clear();
+          
+          // Réinitialiser toutes les variables globales
+          database = [];
+          bookingData = [];
+          availableBookings = [];
+          currentProduct = null;
+          packageQualityResults = {};
+          productQualityResults = {};
+          criterionPhotos = {};
+          currentReference = null;
+          referenceEanList = [];
+          checkedEans.clear();
+          nonTestedEans.clear();
+          currentBooking = null;
+          bookingReferences = [];
+          currentReferenceIndex = 0;
+          completedReferences.clear();
+          bookingQualityResults = {};
+          bddLoaded = false;
+          bookingLoaded = false;
+          
+          // Remettre l'interface à l'état initial
+          document.getElementById('step1').classList.remove('completed');
+          document.getElementById('step1').classList.add('active');
+          document.getElementById('step2').classList.add('hidden');
+          document.getElementById('step2').classList.remove('active', 'completed');
+          document.getElementById('step3').classList.add('hidden');
+          document.getElementById('step3').classList.remove('active', 'completed');
+          document.getElementById('step4').classList.add('hidden');
+          document.getElementById('step4').classList.remove('active', 'completed');
+          
+          // Réinitialiser les statuts des fichiers
+          updateBddStatus('loading', 'Cache vidé - En attente...', false);
+          updateBookingStatus('loading', 'Cache vidé - En attente...', false);
+          
+          // Masquer les résultats et vider les champs
+          document.getElementById("results").style.display = "none";
+          document.getElementById("barcodeInput").value = "";
+          document.getElementById('productListContainer').style.display = 'none';
+          
+          // Remettre les statuts en "En attente"
+          setTimeout(() => {
+            updateBddStatus('loading', 'En attente...', false);
+            updateBookingStatus('loading', 'En attente...', false);
+            
+            // Changer le texte pour indiquer l'attente
+            document.getElementById('bddStatus').innerHTML = '⏳ En attente...';
+            document.getElementById('bddStatus').className = 'status-display';
+            document.getElementById('bookingStatus').innerHTML = '⏳ En attente...';
+            document.getElementById('bookingStatus').className = 'status-display';
+            
+            // Retirer les classes des containers
+            document.querySelector('#bddStatus').closest('.file-status-item').className = 'file-status-item';
+            document.querySelector('#bookingStatus').closest('.file-status-item').className = 'file-status-item';
+            
+            updateGlobalStatus();
+          }, 100);
+          
+          // Scroll vers le haut
+          document.getElementById('step1').scrollIntoView({ behavior: 'smooth' });
+          
+          window.NotificationManager.show('Cache vidé avec succès! Vous pouvez recharger les fichiers.', 'success');
+          
+        } catch (error) {
+          console.error('Erreur lors de la réinitialisation:', error);
+          window.NotificationManager.show('Erreur lors de la réinitialisation du cache.', 'error');
+        }
+      }
+    }
+
+    // ================================================================================================
+    // 🔄 FONCTIONS DE GESTION DU STATUT DES FICHIERS
+    // ================================================================================================
+
+    // Fonction pour mettre à jour le statut global
+    function updateGlobalStatus() {
+      const globalStatus = document.getElementById('globalStatus');
+      const continueBtn = document.getElementById('continueBtn');
+      const step1 = document.getElementById('step1');
+      
+      if (bddLoaded && bookingLoaded) {
+        globalStatus.innerHTML = `
+          <span class="status-indicator success"></span>
+          ✅ Tous les fichiers sont chargés - Prêt à continuer
+        `;
+        document.querySelector('.global-status').classList.add('ready');
+        continueBtn.disabled = false;
+        step1.classList.add('completed');
+        window.NotificationManager.show('Tous les fichiers sont chargés! Vous pouvez continuer.', 'success');
+      } else {
+        const missing = [];
+        if (!bddLoaded) missing.push('BDD');
+        if (!bookingLoaded) missing.push('BOOKING');
+        
+        globalStatus.innerHTML = `
+          <span class="status-indicator pending"></span>
+          Fichiers manquants : ${missing.join(' et ')}
+        `;
+        document.querySelector('.global-status').classList.remove('ready');
+        continueBtn.disabled = true;
+        step1.classList.remove('completed');
+      }
+    }
+
+    // Fonction pour mettre à jour le statut BDD
+    function updateBddStatus(status, message, showNotification = true) {
+      const bddStatus = document.getElementById('bddStatus');
+      const bddItem = bddStatus.closest('.file-status-item');
+      
+      // Nettoyer les classes précédentes
+      bddItem.classList.remove('loaded', 'error');
+      bddStatus.classList.remove('success', 'error', 'loading');
+      
+      switch (status) {
+        case 'loading':
+          bddStatus.innerHTML = `<span class="loading-spinner"></span>${message}`;
+          bddStatus.classList.add('loading');
+          bddLoaded = false;
+          break;
+        case 'success':
+          bddStatus.innerHTML = `✅ ${message}`;
+          bddStatus.classList.add('success');
+          bddItem.classList.add('loaded');
+          bddLoaded = true;
+          if (showNotification) window.NotificationManager.show(`BDD: ${message}`, 'success');
+          break;
+        case 'error':
+          bddStatus.innerHTML = `❌ ${message}`;
+          bddStatus.classList.add('error');
+          bddItem.classList.add('error');
+          bddLoaded = false;
+          if (showNotification) window.NotificationManager.show(`Erreur BDD: ${message}`, 'error');
+          break;
+      }
+      
+      updateGlobalStatus();
+    }
+
+    // Fonction pour mettre à jour le statut BOOKING
+    function updateBookingStatus(status, message, showNotification = true) {
+      const bookingStatus = document.getElementById('bookingStatus');
+      const bookingItem = bookingStatus.closest('.file-status-item');
+      
+      // Nettoyer les classes précédentes
+      bookingItem.classList.remove('loaded', 'error');
+      bookingStatus.classList.remove('success', 'error', 'loading');
+      
+      switch (status) {
+        case 'loading':
+          bookingStatus.innerHTML = `<span class="loading-spinner"></span>${message}`;
+          bookingStatus.classList.add('loading');
+          bookingLoaded = false;
+          break;
+        case 'success':
+          bookingStatus.innerHTML = `✅ ${message}`;
+          bookingStatus.classList.add('success');
+          bookingItem.classList.add('loaded');
+          bookingLoaded = true;
+          if (showNotification) window.NotificationManager.show(`BOOKING: ${message}`, 'success');
+          break;
+        case 'error':
+          bookingStatus.innerHTML = `❌ ${message}`;
+          bookingStatus.classList.add('error');
+          bookingItem.classList.add('error');
+          bookingLoaded = false;
+          if (showNotification) window.NotificationManager.show(`Erreur BOOKING: ${message}`, 'error');
+          break;
+      }
+      
+      updateGlobalStatus();
+    }
+
+    // Fonction pour continuer vers la sélection de booking
+    function proceedToBookingSelection() {
+      if (!bddLoaded || !bookingLoaded) {
+        window.NotificationManager.show('Tous les fichiers doivent être chargés avant de continuer.', 'warning');
+        return;
+      }
+      
+      document.getElementById('step1').classList.remove('active');
+      document.getElementById('step2').classList.remove('hidden');
+      document.getElementById('step2').classList.add('active');
+      
+      window.NotificationManager.show('Passage à la sélection de booking!', 'success');
+      document.getElementById('step2').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Fonction pour valider les données
+    function validateData(data, type) {
+      if (!data || data.length === 0) {
+        throw new Error(`Aucune donnée ${type} trouvée`);
+      }
+      
+      if (type === 'csv' && data[0].length < 10) {
+        throw new Error('Le fichier CSV ne contient pas assez de colonnes');
+      }
+      
+      if (type === 'booking' && data[0].length < 14) {
+        throw new Error('Le fichier booking ne contient pas assez de colonnes');
+      }
+      
+      return true;
+    }
 
     function loadCSV() {
       const file = document.getElementById('csvFile').files[0];
-      if (!file) return alert("⚠️ Sélectionnez un fichier CSV.");
+      if (!file) {
+        window.NotificationManager.show("Sélectionnez un fichier CSV.", 'warning');
+        return;
+      }
+      
+      updateBddStatus('loading', 'Chargement du fichier CSV local...');
       
       Papa.parse(file, {
         header: false,
         delimiter: ";",
         skipEmptyLines: true,
         complete: results => {
-          database = results.data.slice(1);
-          document.getElementById("fileStatus").innerHTML = 
-            `✅ ${database.length} articles chargés avec succès`;
-          document.getElementById('step1').classList.add('completed');
-          document.getElementById('step2').classList.add('active');
+          try {
+            validateData(results.data, 'csv');
+            database = results.data.slice(1);
+            
+            // Sauvegarder dans le stockage local
+            window.StorageManager.save('database', database);
+            
+            updateBddStatus('success', `${database.length} articles chargés depuis le fichier local`);
+          } catch (error) {
+            updateBddStatus('error', error.message);
+          }
         },
         error: (error) => {
-          alert("❌ Erreur lors du chargement du fichier CSV");
+          updateBddStatus('error', 'Erreur lors du lecture du fichier CSV');
           console.error(error);
         }
       });
     }
 
     function loadOnlineCSV() {
-      document.getElementById("fileStatus").innerHTML = "⏳ Chargement de la base de données en ligne...";
+      updateBddStatus('loading', 'Chargement de la base de données en ligne...');
       
       const alternativeUrls = [
         'https://cdn.jsdelivr.net/gh/rbmfinance1/26004@gh-pages/bdd.csv',
@@ -1212,7 +2073,8 @@
       
       async function tryUrls(urlIndex = 0) {
         if (urlIndex >= alternativeUrls.length) {
-          showManualDownloadOption();
+          updateBddStatus('error', 'Toutes les sources en ligne ont échoué');
+          showManualDownloadOption('bdd');
           return;
         }
         
@@ -1245,30 +2107,12 @@
           processCsvData(csvData);
           
         } catch (error) {
+          console.warn(`Source BDD ${urlIndex + 1} échouée:`, error.message);
           tryUrls(urlIndex + 1);
         }
       }
       
       tryUrls(0);
-    }
-
-    function showManualDownloadOption() {
-      document.getElementById("fileStatus").innerHTML = 
-        `<div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 10px 0;">
-          <strong>📥 Téléchargement manuel requis</strong><br/><br/>
-          <div style="margin: 10px 0;">
-            <a href="https://rbmfinance1.github.io/26004/bdd.csv" 
-               download="bdd.csv" 
-               style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
-              📥 Télécharger bdd.csv
-            </a>
-          </div>
-          <small style="color: #856404;">
-            1. Cliquez sur le lien ci-dessus pour télécharger<br/>
-            2. Une fois téléchargé, utilisez "📁 Charger fichier local"<br/>
-            3. Sélectionnez le fichier bdd.csv téléchargé
-          </small>
-        </div>`;
     }
 
     function processCsvData(csvData) {
@@ -1279,33 +2123,33 @@
           skipEmptyLines: true,
           complete: results => {
             if (results.data && results.data.length > 1) {
+              validateData(results.data, 'csv');
               database = results.data.slice(1);
-              document.getElementById("fileStatus").innerHTML = 
-                `✅ ${database.length} articles chargés depuis la base en ligne`;
-              document.getElementById('step1').classList.add('completed');
-              document.getElementById('step2').classList.add('active');
+              
+              // Sauvegarder dans le stockage local
+              window.StorageManager.save('database', database);
+              
+              updateBddStatus('success', `${database.length} articles chargés depuis la base en ligne`);
             } else {
               throw new Error('Fichier CSV vide ou invalide');
             }
           },
           error: (error) => {
-            document.getElementById("fileStatus").innerHTML = 
-              "❌ Erreur lors du traitement du fichier CSV";
+            throw new Error('Erreur lors du traitement du fichier CSV');
           }
         });
       } catch (error) {
-        document.getElementById("fileStatus").innerHTML = 
-          "❌ Erreur lors du traitement des données";
+        updateBddStatus('error', error.message);
       }
     }
 
     function loadOnlineBooking() {
-      if (database.length === 0) {
-        alert("⚠️ Veuillez d'abord charger la base de données CSV.");
+      if (!bddLoaded) {
+        updateBookingStatus('error', 'Veuillez d\'abord charger la base de données CSV');
         return;
       }
 
-      document.getElementById("bookingFileStatus").innerHTML = "⏳ Chargement du fichier de booking en ligne...";
+      updateBookingStatus('loading', 'Chargement du fichier de booking en ligne...');
       
       const alternativeUrls = [
         'https://cdn.jsdelivr.net/gh/rbmfinance1/26004@gh-pages/booking.xlsx',
@@ -1316,7 +2160,8 @@
       async function tryBookingUrls(urlIndex = 0) {
         if (urlIndex >= alternativeUrls.length) {
           console.log('Toutes les sources de booking ont échoué');
-          showManualBookingDownloadOption();
+          updateBookingStatus('error', 'Toutes les sources en ligne ont échoué');
+          showManualDownloadOption('booking');
           return;
         }
         
@@ -1355,23 +2200,27 @@
       tryBookingUrls(0);
     }
 
-    function showManualBookingDownloadOption() {
-      document.getElementById("bookingFileStatus").innerHTML = 
-        `<div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 10px 0;">
-          <strong>📥 Téléchargement manuel requis</strong><br/><br/>
-          <div style="margin: 10px 0;">
-            <a href="https://rbmfinance1.github.io/26004/booking.xlsx" 
-               download="booking.xlsx" 
-               style="background: #007bff; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 5px 0;">
-              📥 Télécharger booking.xlsx
-            </a>
-          </div>
-          <small style="color: #856404;">
-            1. Cliquez sur le lien ci-dessus pour télécharger<br/>
-            2. Une fois téléchargé, utilisez "📁 Charger fichier local"<br/>
-            3. Sélectionnez le fichier booking.xlsx téléchargé
-          </small>
-        </div>`;
+    function loadBookingFile() {
+      const file = document.getElementById('bookingFile').files[0];
+      if (!file) {
+        window.NotificationManager.show("Sélectionnez un fichier Excel.", 'warning');
+        return;
+      }
+      
+      if (!bddLoaded) {
+        updateBookingStatus('error', 'Veuillez d\'abord charger la base de données CSV');
+        window.NotificationManager.show("Veuillez d'abord charger la base de données CSV.", 'warning');
+        return;
+      }
+
+      updateBookingStatus('loading', 'Chargement du fichier de booking local...');
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        processBookingData(e.target.result, false);
+      };
+      
+      reader.readAsArrayBuffer(file);
     }
 
     function processBookingData(arrayBuffer, isOnline = false) {
@@ -1383,50 +2232,54 @@
         const worksheet = workbook.Sheets[firstSheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
-        if (jsonData.length < 2) {
-          throw new Error('Fichier Excel vide ou invalide');
-        }
+        validateData(jsonData, 'booking');
         
         bookingData = jsonData.slice(1);
+        
+        // Sauvegarder dans le stockage local
+        window.StorageManager.save('bookingData', bookingData);
+        
         extractBookings();
         
-        const source = isOnline ? 'depuis le fichier en ligne' : 'avec succès';
-        document.getElementById("bookingFileStatus").innerHTML = 
-          `✅ ${bookingData.length} lignes chargées ${source} - ${availableBookings.length} bookings trouvés`;
+        const source = isOnline ? 'depuis le fichier en ligne' : 'depuis le fichier local';
+        updateBookingStatus('success', `${bookingData.length} lignes chargées ${source} - ${availableBookings.length} bookings trouvés`);
         
-        if (availableBookings.length > 0) {
-          document.getElementById('step2').classList.add('completed');
-          document.getElementById('step3').classList.remove('hidden');
-          document.getElementById('step3').classList.add('active');
-          displayBookings();
+        if (availableBookings.length === 0) {
+          updateBookingStatus('error', 'Aucun booking trouvé dans le fichier');
         } else {
-          document.getElementById("bookingFileStatus").innerHTML += 
-            `<br/><small style="color: #dc3545;">Aucun booking trouvé. Vérifiez que les colonnes H (codes article) et N (numéros booking) contiennent des données.</small>`;
+          // Si on a à la fois la BDD et le booking, afficher les bookings
+          if (bddLoaded && bookingLoaded) {
+            displayBookings();
+          }
         }
         
       } catch (error) {
         console.error('Erreur traitement booking:', error);
-        document.getElementById("bookingFileStatus").innerHTML = 
-          "❌ Erreur lors du traitement du fichier booking: " + error.message;
+        updateBookingStatus('error', 'Erreur lors du traitement du fichier: ' + error.message);
       }
     }
-    function loadBookingFile() {
-      const file = document.getElementById('bookingFile').files[0];
-      if (!file) return alert("⚠️ Sélectionnez un fichier Excel.");
-      
-      if (database.length === 0) {
-        alert("⚠️ Veuillez d'abord charger la base de données CSV.");
-        return;
-      }
 
-      document.getElementById("bookingFileStatus").innerHTML = "⏳ Chargement du fichier de booking...";
+    function showManualDownloadOption(fileType) {
+      const statusElement = fileType === 'bdd' ? document.getElementById('bddStatus') : document.getElementById('bookingStatus');
+      const fileName = fileType === 'bdd' ? 'bdd.csv' : 'booking.xlsx';
+      const fileUrl = fileType === 'bdd' ? 
+        'https://rbmfinance1.github.io/26004/bdd.csv' : 
+        'https://rbmfinance1.github.io/26004/booking.xlsx';
       
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        processBookingData(e.target.result, false);
-      };
+      const manualDownload = `
+        <div class="manual-download">
+          <h5>📥 Téléchargement manuel requis</h5>
+          <p>Le chargement automatique a échoué. Téléchargez le fichier manuellement :</p>
+          <div class="download-links">
+            <a href="${fileUrl}" download="${fileName}" class="download-link">
+              📥 Télécharger ${fileName}
+            </a>
+          </div>
+          <small>Après téléchargement, utilisez le bouton "📁 Local" correspondant.</small>
+        </div>
+      `;
       
-      reader.readAsArrayBuffer(file);
+      statusElement.innerHTML = `❌ Chargement en ligne échoué${manualDownload}`;
     }
 
     function extractBookings() {
@@ -1453,6 +2306,96 @@
         referenceCount: bookingsWithCounts[booking].size,
         references: Array.from(bookingsWithCounts[booking])
       })).sort((a, b) => a.number.localeCompare(b.number));
+      
+      // Sauvegarder dans le stockage local
+      window.StorageManager.save('availableBookings', availableBookings);
+    }
+
+    function extractBookingReferences() {
+      const codesArticles = bookingData
+        .filter(row => String(row[BOOKING_COL_BOOKING_NUMBER]).trim() === currentBooking.number)
+        .map(row => String(row[BOOKING_COL_CODE_ARTICLE]).trim())
+        .filter(code => code);
+      
+      bookingReferences = [];
+      const uniqueRefs = new Set();
+      
+      codesArticles.forEach(codeArticle => {
+        const matchingItems = database.filter(item => item[COL_CODE] === codeArticle);
+        
+        matchingItems.forEach(item => {
+          const ref = item[COL_REF];
+          if (ref && !uniqueRefs.has(ref)) {
+            uniqueRefs.add(ref);
+            bookingReferences.push({
+              reference: ref,
+              codeArticle: codeArticle,
+              marque: item[COL_MARQUE],
+              items: database.filter(dbItem => dbItem[COL_REF] === ref)
+            });
+          }
+        });
+      });
+      
+      currentReferenceIndex = 0;
+      completedReferences.clear();
+      
+      // Sauvegarder les références du booking
+      window.StorageManager.save('bookingReferences', bookingReferences);
+    }
+
+    function displayBookingReferences() {
+      const referencesList = document.getElementById('referencesList');
+      
+      if (bookingReferences.length === 0) {
+        referencesList.innerHTML = '<div class="no-results">Aucune référence trouvée pour ce booking</div>';
+        return;
+      }
+      
+      referencesList.innerHTML = bookingReferences.map((ref, index) => {
+        const isCompleted = completedReferences.has(ref.reference);
+        const isCurrent = index === currentReferenceIndex;
+        
+        let statusClass = 'pending';
+        let statusText = 'En attente';
+        let statusIndicator = 'pending';
+        
+        if (isCompleted) {
+          statusClass = 'completed';
+          statusText = 'Terminé ✅';
+          statusIndicator = 'success';
+        } else if (isCurrent) {
+          statusClass = 'current';
+          statusText = 'En cours 🔄';
+          statusIndicator = 'pending';
+        }
+        
+        return `
+          <div class="reference-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}">
+            <div class="reference-info">
+              <div class="reference-code">${ref.reference}</div>
+              <div class="reference-details">
+                Code: ${ref.codeArticle} | Marque: ${ref.marque} | ${ref.items.length} variante${ref.items.length > 1 ? 's' : ''}
+              </div>
+            </div>
+            <div class="reference-status ${statusClass}">
+              <span class="status-indicator ${statusIndicator}"></span>
+              ${statusText}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateBookingProgress() {
+      const total = bookingReferences.length;
+      const completed = completedReferences.size;
+      const percentage = total > 0 ? (completed / total) * 100 : 0;
+      
+      document.getElementById('bookingProgressFill').style.width = percentage + '%';
+      document.getElementById('bookingProgressFill').textContent = Math.round(percentage) + '%';
+      document.getElementById('bookingProgressText').textContent = 
+        `${completed} / ${total} références contrôlées`;
     }
 
     function displayBookings() {
@@ -1465,7 +2408,10 @@
       
       bookingList.innerHTML = availableBookings.map(booking => 
         `<div class="booking-item" onclick="selectBooking('${booking.number}')">
-          <div class="booking-ref">${booking.number}</div>
+          <div class="booking-ref">
+            <span class="status-indicator pending"></span>
+            ${booking.number}
+          </div>
           <div class="booking-details">
             ${booking.referenceCount} référence${booking.referenceCount > 1 ? 's' : ''} à contrôler
           </div>
@@ -1494,7 +2440,10 @@
       
       bookingList.innerHTML = filteredBookings.map(booking => 
         `<div class="booking-item" onclick="selectBooking('${booking.number}')">
-          <div class="booking-ref">${booking.number}</div>
+          <div class="booking-ref">
+            <span class="status-indicator pending"></span>
+            ${booking.number}
+          </div>
           <div class="booking-details">
             ${booking.referenceCount} référence${booking.referenceCount > 1 ? 's' : ''} à contrôler
           </div>
@@ -1505,235 +2454,50 @@
     function selectBooking(bookingNumber) {
       currentBooking = availableBookings.find(b => b.number === bookingNumber);
       if (!currentBooking) {
-        alert("❌ Booking introuvable");
+        window.NotificationManager.show("Booking introuvable", 'error');
         return;
       }
+      
+      // Sauvegarder le booking sélectionné
+      window.StorageManager.save('currentBooking', currentBooking);
       
       extractBookingReferences();
       
       document.getElementById("currentBookingInfo").innerHTML = `
         <h4>📋 Booking sélectionné : ${currentBooking.number}</h4>
         <strong>Références à contrôler :</strong> ${bookingReferences.length}<br/>
-        <strong>Statut :</strong> Prêt pour le contrôle
+        <strong>Statut :</strong> <span class="status-indicator success"></span>Prêt pour le contrôle
       `;
+      
+      document.getElementById('step2').classList.remove('active');
+      document.getElementById('step2').classList.add('completed');
+      document.getElementById('step3').classList.remove('hidden');
+      document.getElementById('step3').classList.add('active');
+      
+      displayBookingReferences();
+      updateBookingProgress();
+      
+      window.NotificationManager.show(`Booking ${bookingNumber} sélectionné!`, 'success');
+      
+      document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function startBookingControl() {
+      if (bookingReferences.length === 0) {
+        window.NotificationManager.show("Aucune référence à contrôler dans ce booking", 'error');
+        return;
+      }
       
       document.getElementById('step3').classList.remove('active');
       document.getElementById('step3').classList.add('completed');
       document.getElementById('step4').classList.remove('hidden');
       document.getElementById('step4').classList.add('active');
       
-      displayBookingReferences();
-      updateBookingProgress();
-      
-      document.getElementById('step4').scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function extractBookingReferences() {
-      console.log('=== DEBUG EXTRACTION RÉFÉRENCES ===');
-      console.log('Booking sélectionné:', currentBooking.number);
-      
-      const codesArticles = bookingData
-        .filter(row => String(row[BOOKING_COL_BOOKING_NUMBER]).trim() === currentBooking.number)
-        .map(row => String(row[BOOKING_COL_CODE_ARTICLE]).trim())
-        .filter(code => code);
-      
-      console.log('Codes articles trouvés dans le booking:', codesArticles);
-      console.log('Nombre de codes articles:', codesArticles.length);
-      
-      // Afficher quelques exemples de codes de la BDD
-      const bddCodes = database.slice(0, 10).map(item => item[COL_CODE]);
-      console.log('Exemples de codes dans la BDD:', bddCodes);
-      
-      bookingReferences = [];
-      const uniqueRefs = new Set();
-      let foundMatches = 0;
-      
-      codesArticles.forEach((codeArticle, index) => {
-        console.log(`\nRecherche du code article ${index + 1}:`, codeArticle);
-        
-        const matchingItems = database.filter(item => item[COL_CODE] === codeArticle);
-        console.log(`  Correspondances trouvées: ${matchingItems.length}`);
-        
-        if (matchingItems.length === 0) {
-          // Chercher des correspondances approximatives
-          const similarCodes = database.filter(item => 
-            item[COL_CODE] && item[COL_CODE].toLowerCase().includes(codeArticle.toLowerCase())
-          ).slice(0, 3);
-          
-          if (similarCodes.length > 0) {
-            console.log(`  Codes similaires trouvés:`, similarCodes.map(item => item[COL_CODE]));
-          } else {
-            console.log(`  Aucun code similaire trouvé`);
-          }
-        } else {
-          foundMatches++;
-          console.log(`  Référence(s) trouvée(s):`, matchingItems.map(item => item[COL_REF]));
-        }
-        
-        matchingItems.forEach(item => {
-          const ref = item[COL_REF];
-          if (ref && !uniqueRefs.has(ref)) {
-            uniqueRefs.add(ref);
-            bookingReferences.push({
-              reference: ref,
-              codeArticle: codeArticle,
-              marque: item[COL_MARQUE],
-              items: database.filter(dbItem => dbItem[COL_REF] === ref)
-            });
-          }
-        });
-      });
-      
-      console.log('\n=== RÉSUMÉ ===');
-      console.log('Codes articles dans le booking:', codesArticles.length);
-      console.log('Codes avec correspondance dans BDD:', foundMatches);
-      console.log('Références uniques extraites:', bookingReferences.length);
-      console.log('Références finales:', bookingReferences.map(ref => ref.reference));
-      console.log('=== FIN DEBUG ===');
-      
-      // Afficher un message d'aide si aucune référence trouvée
-      if (bookingReferences.length === 0 && codesArticles.length > 0) {
-        showCodeMismatchHelp(codesArticles);
-      }
-      
-      currentReferenceIndex = 0;
-      completedReferences.clear();
-    }
-
-    function showCodeMismatchHelp(codesArticles) {
-      document.getElementById("currentBookingInfo").innerHTML += `
-        <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 15px 0;">
-          <strong>⚠️ Problème de correspondance des codes</strong><br/><br/>
-          <div style="margin: 10px 0;">
-            <strong>Codes articles du booking :</strong><br/>
-            <div style="font-family: monospace; font-size: 0.9em; background: #f8f9fa; padding: 8px; border-radius: 4px; margin: 8px 0;">
-              ${codesArticles.slice(0, 10).join(', ')}${codesArticles.length > 10 ? '...' : ''}
-            </div>
-            <small style="color: #856404;">
-              Ces codes articles du fichier Excel ne correspondent à aucun code dans la BDD.csv.<br/>
-              Vérifiez que les codes sont identiques dans les deux fichiers.
-            </small>
-          </div>
-          <button onclick="showDetailedComparison()" style="background: #007bff; color: white; padding: 8px 12px; border: none; border-radius: 5px; margin: 5px;">
-            🔍 Comparer avec la BDD
-          </button>
-        </div>`;
-    }
-
-    function showDetailedComparison() {
-      const codesArticles = bookingData
-        .filter(row => String(row[BOOKING_COL_BOOKING_NUMBER]).trim() === currentBooking.number)
-        .map(row => String(row[BOOKING_COL_CODE_ARTICLE]).trim())
-        .filter(code => code);
-      
-      const bddCodes = database.slice(0, 20).map(item => item[COL_CODE]);
-      
-      let comparisonText = "=== COMPARAISON CODES ARTICLES ===\n\n";
-      comparisonText += `CODES DU BOOKING ${currentBooking.number}:\n`;
-      codesArticles.slice(0, 10).forEach((code, index) => {
-        comparisonText += `${index + 1}: "${code}"\n`;
-      });
-      
-      comparisonText += `\nCODES DE LA BDD (exemples):\n`;
-      bddCodes.forEach((code, index) => {
-        comparisonText += `${index + 1}: "${code || '(vide)'}"\n`;
-      });
-      
-      comparisonText += `\nRECHERCHE DE CORRESPONDANCES:\n`;
-      codesArticles.slice(0, 5).forEach(bookingCode => {
-        const exactMatch = database.find(item => item[COL_CODE] === bookingCode);
-        const similarMatches = database.filter(item => 
-          item[COL_CODE] && (
-            item[COL_CODE].toLowerCase().includes(bookingCode.toLowerCase()) ||
-            bookingCode.toLowerCase().includes(item[COL_CODE].toLowerCase())
-          )
-        ).slice(0, 3);
-        
-        comparisonText += `\nCode "${bookingCode}":\n`;
-        if (exactMatch) {
-          comparisonText += `  ✅ Correspondance exacte trouvée\n`;
-        } else if (similarMatches.length > 0) {
-          comparisonText += `  ⚠️ Correspondances similaires: ${similarMatches.map(item => item[COL_CODE]).join(', ')}\n`;
-        } else {
-          comparisonText += `  ❌ Aucune correspondance trouvée\n`;
-        }
-      });
-      
-      const popup = window.open('', 'comparison', 'width=700,height=500,scrollbars=yes');
-      popup.document.write(`
-        <html>
-          <head><title>Comparaison Codes Articles</title></head>
-          <body style="font-family: monospace; padding: 20px;">
-            <h3>Comparaison des codes articles</h3>
-            <pre style="white-space: pre-wrap; font-size: 12px;">${comparisonText}</pre>
-            <button onclick="window.close()">Fermer</button>
-          </body>
-        </html>
-      `);
-    }
-
-    function displayBookingReferences() {
-      const referencesList = document.getElementById('referencesList');
-      
-      if (bookingReferences.length === 0) {
-        referencesList.innerHTML = '<div class="no-results">Aucune référence trouvée pour ce booking</div>';
-        return;
-      }
-      
-      referencesList.innerHTML = bookingReferences.map((ref, index) => {
-        const isCompleted = completedReferences.has(ref.reference);
-        const isCurrent = index === currentReferenceIndex;
-        
-        let statusClass = 'pending';
-        let statusText = 'En attente';
-        
-        if (isCompleted) {
-          statusClass = 'completed';
-          statusText = 'Terminé ✅';
-        } else if (isCurrent) {
-          statusClass = 'current';
-          statusText = 'En cours 🔄';
-        }
-        
-        return `
-          <div class="reference-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}">
-            <div class="reference-info">
-              <div class="reference-code">${ref.reference}</div>
-              <div class="reference-details">
-                Code: ${ref.codeArticle} | Marque: ${ref.marque} | ${ref.items.length} variante${ref.items.length > 1 ? 's' : ''}
-              </div>
-            </div>
-            <div class="reference-status ${statusClass}">${statusText}</div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function updateBookingProgress() {
-      const total = bookingReferences.length;
-      const completed = completedReferences.size;
-      const percentage = total > 0 ? (completed / total) * 100 : 0;
-      
-      document.getElementById('bookingProgressFill').style.width = percentage + '%';
-      document.getElementById('bookingProgressFill').textContent = Math.round(percentage) + '%';
-      document.getElementById('bookingProgressText').textContent = 
-        `${completed} / ${total} références contrôlées`;
-    }
-
-    function startBookingControl() {
-      if (bookingReferences.length === 0) {
-        alert("❌ Aucune référence à contrôler dans ce booking");
-        return;
-      }
-      
-      document.getElementById('step4').classList.remove('active');
-      document.getElementById('step4').classList.add('completed');
-      document.getElementById('step5').classList.remove('hidden');
-      document.getElementById('step5').classList.add('active');
-      
       updateCurrentControlInfo();
       
-      document.getElementById('step5').scrollIntoView({ behavior: 'smooth' });
+      window.NotificationManager.show("Contrôle du booking commencé!", 'success');
+      
+      document.getElementById('step4').scrollIntoView({ behavior: 'smooth' });
     }
 
     function updateCurrentControlInfo() {
@@ -1750,30 +2514,56 @@
     }
 
     function selectDifferentBooking() {
+      // Arrêter les scanners s'ils sont actifs
+      if (window.isScanning) window.stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      // Retourner à la sélection de booking depuis n'importe quelle étape
+      document.getElementById('step3').classList.remove('active');
+      document.getElementById('step3').classList.add('hidden');
       document.getElementById('step4').classList.remove('active');
       document.getElementById('step4').classList.add('hidden');
-      document.getElementById('step3').classList.add('active');
-      document.getElementById('step3').classList.remove('completed');
+      document.getElementById('step5').classList.remove('active');
+      document.getElementById('step5').classList.add('hidden');
+      document.getElementById('step6').classList.remove('active');
+      document.getElementById('step6').classList.add('hidden');
+      document.getElementById('step7').classList.remove('active');
+      document.getElementById('step7').classList.add('hidden');
       
+      document.getElementById('step2').classList.add('active');
+      document.getElementById('step2').classList.remove('completed');
+      
+      // Réinitialiser les variables du booking
       currentBooking = null;
       bookingReferences = [];
       currentReferenceIndex = 0;
       completedReferences.clear();
+      currentProduct = null;
       
-      document.getElementById('step3').scrollIntoView({ behavior: 'smooth' });
+      // Nettoyer le stockage local
+      window.StorageManager.remove('currentBooking');
+      window.StorageManager.remove('bookingReferences');
+      
+      // Masquer les résultats de recherche
+      document.getElementById("results").style.display = "none";
+      document.getElementById("barcodeInput").value = "";
+      
+      window.NotificationManager.show('Retour à la sélection de booking', 'info');
+      
+      document.getElementById('step2').scrollIntoView({ behavior: 'smooth' });
     }
 
     function findProduct() {
-      if (window.isScanning) stopCamera();
+      if (window.isScanning) window.stopCamera();
       
       const code = document.getElementById("barcodeInput").value.trim();
       if (!code) {
-        alert("⚠️ Veuillez entrer un code EAN");
+        window.NotificationManager.show("Veuillez entrer un code EAN", 'warning');
         return;
       }
       
       if (database.length === 0) {
-        alert("⚠️ Veuillez d'abord charger un fichier CSV");
+        window.NotificationManager.show("Veuillez d'abord charger un fichier CSV", 'warning');
         return;
       }
       
@@ -1792,12 +2582,18 @@
               );
               
               if (belongsToBooking) {
-                alert(`❌ Ce produit appartient à une autre référence du booking.\n\nRéférence attendue: ${currentRef.reference}\nRéférence du produit: ${otherRefProduct[COL_REF]}\n\nTerminez d'abord la référence en cours.`);
+                window.NotificationManager.show(
+                  `Ce produit appartient à une autre référence du booking.\n\nRéférence attendue: ${currentRef.reference}\nRéférence du produit: ${otherRefProduct[COL_REF]}`, 
+                  'error'
+                );
               } else {
-                alert(`❌ Ce produit n'appartient pas au booking ${currentBooking.number}.\n\nRéférence du produit: ${otherRefProduct[COL_REF]}`);
+                window.NotificationManager.show(
+                  `Ce produit n'appartient pas au booking ${currentBooking.number}.\n\nRéférence du produit: ${otherRefProduct[COL_REF]}`, 
+                  'error'
+                );
               }
             } else {
-              alert("❌ Code EAN non trouvé dans la base de données");
+              window.NotificationManager.show("Code EAN non trouvé dans la base de données", 'error');
             }
           }
         }
@@ -1806,7 +2602,7 @@
         if (result) {
           proceedWithProduct(result);
         } else {
-          alert("❌ Code EAN non trouvé dans la base de données");
+          window.NotificationManager.show("Code EAN non trouvé dans la base de données", 'error');
         }
       }
     }
@@ -1816,7 +2612,7 @@
       const rd = document.getElementById("results");
       rd.style.display = "block";
       rd.innerHTML = `
-        <div class="item">
+        <div class="item" style="background: linear-gradient(135deg, #d4edda, #c3e6cb); border: 1px solid #28a745; border-radius: 10px;">
           <strong>✅ Article trouvé !</strong><br/><br/>
           <strong>Réf :</strong> ${result[COL_REF] || 'N/A'}<br/>
           <strong>Code Article :</strong> ${result[COL_CODE] || 'N/A'}<br/>
@@ -1824,16 +2620,18 @@
           <strong>Couleur :</strong> ${result[COL_COULEUR] || 'N/A'}<br/>
           <strong>Taille :</strong> ${result[COL_TAILLE] || 'N/A'}<br/>
           <strong>EAN :</strong> ${result[COL_EAN] || 'N/A'}<br/><br/>
-          <button onclick='startQualityControl()'>🔍 Commencer le contrôle qualité</button>
+          <button onclick='startQualityControl()' style="background: linear-gradient(135deg, #28a745, #20c997);">🔍 Commencer le contrôle qualité</button>
         </div>`;
       rd.scrollIntoView({ behavior: 'smooth' });
+      
+      window.NotificationManager.show("Article trouvé! Prêt pour le contrôle qualité.", 'success');
     }
 
     function showProductList() {
-      if (window.isScanning) stopCamera();
+      if (window.isScanning) window.stopCamera();
       
       if (database.length === 0) {
-        alert("⚠️ Veuillez d'abord charger un fichier CSV");
+        window.NotificationManager.show("Veuillez d'abord charger un fichier CSV", 'warning');
         return;
       }
       
@@ -1938,9 +2736,13 @@
       }
     }
 
+    // ================================================================================================
+    // 🔧 FONCTIONS DE CONTRÔLE QUALITÉ - ÉTAPES 5, 6, 7
+    // ================================================================================================
+
     function startQualityControl() {
       // Arrêter les scanners actifs
-      if (window.isScanning) stopCamera();
+      if (window.isScanning) window.stopCamera();
       
       if (!currentProduct) return;
 
@@ -1961,16 +2763,18 @@
       document.getElementById("selectedProductInfo").innerHTML = productInfoHtml;
 
       // Afficher la section de contrôle qualité carton
-      document.getElementById("step6").classList.remove("hidden");
-      document.getElementById("step6").classList.add("active");
-      document.getElementById("step5").classList.remove("active");
-      document.getElementById("step5").classList.add("completed");
+      document.getElementById("step5").classList.remove("hidden");
+      document.getElementById("step5").classList.add("active");
+      document.getElementById("step4").classList.remove("active");
+      document.getElementById("step4").classList.add("completed");
 
       // Réinitialiser les contrôles
       resetQualityControls();
 
       // Scroll vers la section de contrôle
-      document.getElementById("step6").scrollIntoView({ behavior: 'smooth' });
+      document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
+      
+      window.NotificationManager.show("Contrôle qualité commencé!", 'success');
     }
 
     function resetQualityControls() {
@@ -2081,13 +2885,13 @@
 
     function proceedToProductControl() {
       // Arrêter les scanners actifs
-      if (window.isScanning) stopCamera();
+      if (window.isScanning) window.stopCamera();
       
       updatePackageQualityStatus();
       
-      // Passer à l'étape 7 (contrôle produit)
-      document.getElementById("step6").classList.remove("active");
-      document.getElementById("step6").classList.add("completed");
+      // Passer à l'étape 6 (contrôle produit)
+      document.getElementById("step5").classList.remove("active");
+      document.getElementById("step5").classList.add("completed");
       
       // Copier les informations du produit dans la section produit
       const productInfoHtml = `
@@ -2102,30 +2906,36 @@
       
       document.getElementById("productControlInfo").innerHTML = productInfoHtml;
       
-      document.getElementById("step7").classList.remove("hidden");
-      document.getElementById("step7").classList.add("active");
+      document.getElementById("step6").classList.remove("hidden");
+      document.getElementById("step6").classList.add("active");
 
       // Scroll vers la section de contrôle produit
-      document.getElementById("step7").scrollIntoView({ behavior: 'smooth' });
+      document.getElementById("step6").scrollIntoView({ behavior: 'smooth' });
+      
+      window.NotificationManager.show("Passage au contrôle du produit!", 'success');
     }
 
     function goBackToPackageControl() {
-      // Retourner à l'étape 6 (contrôle carton)
+      // Retourner à l'étape 5 (contrôle carton)
+      document.getElementById("step6").classList.remove("active");
+      document.getElementById("step6").classList.add("hidden");
       document.getElementById("step7").classList.remove("active");
       document.getElementById("step7").classList.add("hidden");
       
-      document.getElementById("step6").classList.add("active");
-      document.getElementById("step6").classList.remove("completed");
+      document.getElementById("step5").classList.add("active");
+      document.getElementById("step5").classList.remove("completed");
 
       // Scroll vers la section de contrôle carton
-      document.getElementById("step6").scrollIntoView({ behavior: 'smooth' });
+      document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
+      
+      window.NotificationManager.show("Retour au contrôle du carton", 'info');
     }
 
     function proceedToEanControl() {
       updateProductQualityStatus();
       
       if (!currentProduct || !currentProduct[COL_REF]) {
-        alert("⚠️ Impossible de récupérer la référence du produit");
+        window.NotificationManager.show("Impossible de récupérer la référence du produit", 'error');
         return;
       }
 
@@ -2137,13 +2947,13 @@
       nonTestedEans.clear();
 
       if (referenceEanList.length === 0) {
-        alert("⚠️ Aucun EAN trouvé pour cette référence");
+        window.NotificationManager.show("Aucun EAN trouvé pour cette référence", 'error');
         return;
       }
 
-      // Passer à l'étape 8 (contrôle EAN)
-      document.getElementById("step7").classList.remove("active");
-      document.getElementById("step7").classList.add("completed");
+      // Passer à l'étape 7 (contrôle EAN)
+      document.getElementById("step6").classList.remove("active");
+      document.getElementById("step6").classList.add("completed");
       
       // Afficher les informations de la référence
       const eanInfoHtml = `
@@ -2155,505 +2965,39 @@
       
       document.getElementById("eanControlInfo").innerHTML = eanInfoHtml;
       
-      document.getElementById("step8").classList.remove("hidden");
-      document.getElementById("step8").classList.add("active");
+      document.getElementById("step7").classList.remove("hidden");
+      document.getElementById("step7").classList.add("active");
 
       // Initialiser la liste des EAN
       displayEanList();
       updateEanProgress();
 
       // Scroll vers la section de contrôle EAN
-      document.getElementById("step8").scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function displayEanList() {
-      const eanList = document.getElementById('eanList');
+      document.getElementById("step7").scrollIntoView({ behavior: 'smooth' });
       
-      eanList.innerHTML = referenceEanList.map((item, index) => {
-        const isChecked = checkedEans.has(item[COL_EAN]);
-        const isNonTested = nonTestedEans.has(item[COL_EAN]);
-        
-        let statusClass = '';
-        let statusText = '';
-        let statusBadgeClass = '';
-        let actionButton = '';
-        
-        if (isChecked) {
-          statusClass = 'checked';
-          statusText = 'Verifie ✅';
-          statusBadgeClass = 'found';
-          actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
-        } else if (isNonTested) {
-          statusClass = 'non-tested';
-          statusText = 'Non testé ⏭️';
-          statusBadgeClass = 'non-tested';
-          actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
-        } else {
-          statusClass = '';
-          statusText = 'En attente ⏳';
-          statusBadgeClass = 'pending';
-          actionButton = `<button onclick="markAsNonTested('${item[COL_EAN]}')" style="background: #ffc107; color: #000; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">⏭️ Non testé</button>`;
-        }
-        
-        return `
-          <div class="ean-item ${statusClass}" id="ean-item-${index}">
-            <div class="ean-details">
-              <div class="ean-code">${item[COL_EAN] || 'N/A'}</div>
-              <div class="ean-info">
-                ${item[COL_CODE] || 'N/A'} | 
-                Taille: ${item[COL_TAILLE] || 'N/A'} | 
-                Couleur: ${item[COL_COULEUR] || 'N/A'}
-              </div>
-            </div>
-            <div style="display: flex; align-items: center;">
-              <div class="ean-status ${statusBadgeClass}">${statusText}</div>
-              ${actionButton}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function updateEanProgress() {
-      const total = referenceEanList.length;
-      const checked = checkedEans.size;
-      const nonTested = nonTestedEans.size;
-      const processed = checked + nonTested;
-      const percentage = total > 0 ? (processed / total) * 100 : 0;
-
-      document.getElementById('progressFill').style.width = percentage + '%';
-      document.getElementById('progressText').textContent = `${checked} verifies + ${nonTested} non testes = ${processed} / ${total} EAN traites`;
-
-      // Afficher un résumé si tous les EAN sont traités
-      if (processed === total && total > 0) {
-        showEanValidationResult();
-      }
-    }
-
-    function markAsNonTested(eanCode) {
-      if (checkedEans.has(eanCode)) {
-        return;
-      }
-      
-      nonTestedEans.add(eanCode);
-      displayEanList();
-      updateEanProgress();
-      
-      if (navigator.vibrate) {
-        navigator.vibrate(100);
-      }
-    }
-
-    function resetEanStatus(eanCode) {
-      if (confirm("🔄 Remettre cet EAN en attente ?\n\nIl redeviendra disponible pour être scanné ou marqué comme non testé.")) {
-        checkedEans.delete(eanCode);
-        nonTestedEans.delete(eanCode);
-        displayEanList();
-        updateEanProgress();
-        
-        if (navigator.vibrate) {
-          navigator.vibrate(100);
-        }
-      }
-    }
-
-    function showEanValidationResult() {
-      const resultDiv = document.getElementById('eanValidationResult');
-      const total = referenceEanList.length;
-      const checked = checkedEans.size;
-      const nonTested = nonTestedEans.size;
-      
-      let statusClass = 'success';
-      let statusIcon = '✅';
-      let statusTitle = 'Contrôle EAN terminé';
-      
-      if (nonTested > 0) {
-        statusClass = 'warning';
-        statusIcon = '⚠️';
-        statusTitle = 'Contrôle EAN terminé avec réserves';
-      }
-      
-      resultDiv.innerHTML = `
-        <div class="validation-summary ${statusClass}">
-          <h4>${statusIcon} ${statusTitle}</h4>
-          <p>Référence <strong>${currentReference}</strong> : ${total} EAN au total</p>
-          <ul style="margin: 10px 0; padding-left: 20px;">
-            <li><strong>${checked} EAN vérifiés</strong> ✅</li>
-            ${nonTested > 0 ? `<li><strong>${nonTested} EAN non testés</strong> ⏭️</li>` : ''}
-          </ul>
-          <p>Vous pouvez maintenant terminer cette référence.</p>
-        </div>
-      `;
-      resultDiv.style.display = 'block';
-    }
-
-    function startEanScanner() {
-      const video = document.getElementById('eanVideo');
-      const scanButton = document.getElementById('eanScanButton');
-      const stopButton = document.getElementById('eanStopButton');
-      
-      try {
-        // Arrêter toute session précédente
-        if (eanCodeReader) {
-          eanCodeReader.reset();
-        }
-        
-        eanCodeReader = new window.BrowserMultiFormatReader();
-        const constraints = {
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }
-        };
-        
-        eanCodeReader.decodeFromConstraints(constraints, video, (result, err) => {
-          if (result && window.isEanScanning) {
-            document.getElementById("eanInput").value = result.text;
-            checkEanForReference();
-            if (navigator.vibrate) {
-              navigator.vibrate(200);
-            }
-          }
-        }).then(() => {
-          window.isEanScanning = true;
-          video.style.display = 'block';
-          scanButton.style.display = 'none';
-          stopButton.style.display = 'inline-block';
-          document.getElementById('eanScannerContainer').style.display = 'block';
-        }).catch(err => {
-          console.error('Erreur caméra EAN:', err);
-          alert('Impossible d\'accéder à la caméra pour le scan EAN.');
-          resetEanCameraButtons();
-        });
-        
-      } catch (err) {
-        console.error('Erreur initialisation scanner EAN:', err);
-        alert('Erreur lors de l\'initialisation du scanner EAN.');
-        resetEanCameraButtons();
-      }
-    }
-
-    function stopEanScanner() {
-      window.isEanScanning = false;
-      
-      // Arrêter le flux vidéo EAN
-      const eanVideo = document.getElementById('eanVideo');
-      if (eanVideo && eanVideo.srcObject) {
-        const stream = eanVideo.srcObject;
-        if (stream) {
-          stream.getTracks().forEach(track => {
-            track.stop();
-          });
-          eanVideo.srcObject = null;
-        }
-      }
-      
-      // Arrêter le code reader EAN
-      if (eanCodeReader) {
-        try {
-          eanCodeReader.reset();
-        } catch (e) {
-          console.log('Erreur lors de l\'arrêt de la caméra EAN:', e);
-        }
-        eanCodeReader = null;
-      }
-      
-      resetEanCameraButtons();
-    }
-
-    function resetEanCameraButtons() {
-      const eanVideo = document.getElementById('eanVideo');
-      if (eanVideo) {
-        eanVideo.style.display = 'none';
-        if (eanVideo.srcObject) {
-          eanVideo.srcObject = null;
-        }
-      }
-      
-      document.getElementById('eanScanButton').style.display = 'inline-block';
-      document.getElementById('eanStopButton').style.display = 'none';
-      document.getElementById('eanScannerContainer').style.display = 'none';
-    }
-
-    function checkEanForReference() {
-      const scannedEan = document.getElementById("eanInput").value.trim();
-      
-      if (!scannedEan) {
-        alert("⚠️ Veuillez saisir ou scanner un code EAN");
-        return;
-      }
-
-      // Vérifier si cet EAN appartient à la référence actuelle
-      const matchingItem = referenceEanList.find(item => item[COL_EAN] === scannedEan);
-      
-      if (matchingItem) {
-        if (checkedEans.has(scannedEan)) {
-          alert("ℹ️ Cet EAN a déjà été vérifié");
-        } else {
-          // Si l'EAN était marqué comme non testé, le retirer de cette liste
-          if (nonTestedEans.has(scannedEan)) {
-            nonTestedEans.delete(scannedEan);
-          }
-          
-          checkedEans.add(scannedEan);
-          displayEanList();
-          updateEanProgress();
-          
-          // Feedback positif
-          if (navigator.vibrate) {
-            navigator.vibrate([100, 50, 100]);
-          }
-          
-          // Animation de succès
-          const itemIndex = referenceEanList.findIndex(item => item[COL_EAN] === scannedEan);
-          const itemElement = document.getElementById(`ean-item-${itemIndex}`);
-          if (itemElement) {
-            itemElement.style.transform = 'scale(1.05)';
-            setTimeout(() => {
-              itemElement.style.transform = 'scale(1)';
-            }, 200);
-          }
-        }
-      } else {
-        // Vérifier si cet EAN existe dans la base mais pour une autre référence
-        const otherItem = database.find(item => item[COL_EAN] === scannedEan);
-        
-        if (otherItem) {
-          alert(`❌ Cet EAN appartient à une autre référence :\n${otherItem[COL_REF]}\n\nRéférence attendue : ${currentReference}`);
-        } else {
-          alert("❌ Code EAN non trouvé dans la base de données");
-        }
-      }
-      
-      // Vider le champ de saisie
-      document.getElementById("eanInput").value = "";
+      window.NotificationManager.show("Passage au contrôle des EAN!", 'success');
     }
 
     function goBackToProductControl() {
-      // Retourner à l'étape 7 (contrôle produit)
-      document.getElementById("step8").classList.remove("active");
-      document.getElementById("step8").classList.add("hidden");
+      // Retourner à l'étape 6 (contrôle produit)
+      document.getElementById("step7").classList.remove("active");
+      document.getElementById("step7").classList.add("hidden");
       
-      document.getElementById("step7").classList.add("active");
-      document.getElementById("step7").classList.remove("completed");
+      document.getElementById("step6").classList.add("active");
+      document.getElementById("step6").classList.remove("completed");
 
       // Arrêter le scanner EAN s'il est en cours
       if (window.isEanScanning) stopEanScanner();
 
       // Scroll vers la section de contrôle produit
-      document.getElementById("step7").scrollIntoView({ behavior: 'smooth' });
+      document.getElementById("step6").scrollIntoView({ behavior: 'smooth' });
+      
+      window.NotificationManager.show("Retour au contrôle du produit", 'info');
     }
 
-    function completeCurrentReference() {
-      // Sauvegarder les résultats de cette référence
-      saveCurrentReferenceResults();
-      
-      // Marquer la référence comme terminée
-      const currentRef = bookingReferences[currentReferenceIndex];
-      if (currentRef) {
-        completedReferences.add(currentRef.reference);
-        
-        // Mettre à jour immédiatement l'affichage
-        updateBookingProgress();
-        displayBookingReferences();
-      }
-      
-      // Passer à la référence suivante
-      moveToNextReference();
-    }
-
-    function saveCurrentReferenceResults() {
-      if (!currentProduct) return;
-      
-      const referenceKey = currentProduct[COL_REF];
-      bookingQualityResults[referenceKey] = {
-        reference: referenceKey,
-        product: currentProduct,
-        packageQuality: { ...packageQualityResults },
-        productQuality: { ...productQualityResults },
-        eanControl: {
-          total: referenceEanList.length,
-          checked: Array.from(checkedEans),
-          nonTested: Array.from(nonTestedEans),
-          eanList: [...referenceEanList]
-        },
-        timestamp: new Date().toISOString(),
-        photos: { ...criterionPhotos }
-      };
-    }
-
-    function skipToNextReference() {
-      if (confirm("⏭️ Passer à la référence suivante ?\n\nLes données du contrôle en cours seront perdues.")) {
-        moveToNextReference();
-      }
-    }
-
-    function moveToNextReference() {
-      // Réinitialiser les contrôles
-      resetCurrentControlState();
-      
-      // Passer à la référence suivante
-      currentReferenceIndex++;
-      
-      // Toujours mettre à jour l'affichage de la progression
-      updateBookingProgress();
-      displayBookingReferences();
-      
-      if (currentReferenceIndex >= bookingReferences.length) {
-        // Toutes les références ont été traitées
-        showBookingComplete();
-      } else {
-        // Mettre à jour les informations et retourner au scan
-        updateCurrentControlInfo();
-        
-        // Retourner à l'étape de scan
-        document.getElementById("step8").classList.remove("active");
-        document.getElementById("step8").classList.add("hidden");
-        document.getElementById("step7").classList.remove("active");
-        document.getElementById("step7").classList.add("hidden");
-        document.getElementById("step6").classList.remove("active");
-        document.getElementById("step6").classList.add("hidden");
-        
-        document.getElementById("step5").classList.remove("completed");
-        document.getElementById("step5").classList.add("active");
-        
-        // Scroll vers la section de scan
-        document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
-      }
-    }
-
-    function resetCurrentControlState() {
-      // Réinitialiser toutes les variables de contrôle
-      currentProduct = null;
-      currentReference = null;
-      referenceEanList = [];
-      checkedEans.clear();
-      nonTestedEans.clear();
-      packageQualityResults = {};
-      productQualityResults = {};
-      criterionPhotos = {};
-      
-      // Réinitialiser les formulaires
-      resetQualityControls();
-      
-      // Masquer les résultats de recherche
-      document.getElementById("results").style.display = "none";
-      document.getElementById("barcodeInput").value = "";
-    }
-
-    function showBookingComplete() {
-      // Mettre à jour une dernière fois la progression avant d'afficher les rapports
-      updateBookingProgress();
-      displayBookingReferences();
-      
-      // Afficher la section des rapports
-      document.getElementById("step8").classList.remove("active");
-      document.getElementById("step8").classList.add("hidden");
-      document.getElementById("step7").classList.remove("active");
-      document.getElementById("step7").classList.add("hidden");
-      document.getElementById("step6").classList.remove("active");
-      document.getElementById("step6").classList.add("hidden");
-      document.getElementById("step5").classList.remove("active");
-      document.getElementById("step5").classList.add("hidden");
-      
-      document.getElementById("step9").classList.remove("hidden");
-      document.getElementById("step9").classList.add("active");
-      
-      // Mettre à jour les informations finales
-      updateFinalBookingInfo();
-      
-      // Scroll vers la section des rapports
-      document.getElementById("step9").scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function updateFinalBookingInfo() {
-      const totalReferences = bookingReferences.length;
-      const completedCount = completedReferences.size;
-      
-      document.getElementById("reportsBookingInfo").innerHTML = `
-        <h4>🎉 Booking ${currentBooking.number} terminé !</h4>
-        <strong>Références contrôlées :</strong> ${completedCount} / ${totalReferences}<br/>
-        <strong>Statut :</strong> ${completedCount === totalReferences ? 'Contrôle complet' : 'Contrôle partiel'}
-      `;
-    }
-
-    function generateIndividualReports() {
-      alert("🚧 Génération des rapports individuels en cours de développement...");
-    }
-
-    function generateGlobalBookingReport() {
-      alert("🚧 Génération du rapport global en cours de développement...");
-    }
-
-    function startNewBooking() {
-      if (confirm("🆕 Commencer un nouveau booking ?\n\nToutes les données actuelles seront perdues.")) {
-        // Réinitialiser complètement l'application
-        resetApplication();
-        
-        // Retourner à l'étape de sélection de booking
-        document.getElementById("step9").classList.remove("active");
-        document.getElementById("step9").classList.add("hidden");
-        document.getElementById("step3").classList.remove("completed");
-        document.getElementById("step3").classList.add("active");
-        
-        // Scroll vers la sélection de booking
-        document.getElementById("step3").scrollIntoView({ behavior: 'smooth' });
-      }
-    }
-
-    function resetApplication() {
-      // Réinitialiser toutes les variables
-      currentBooking = null;
-      bookingReferences = [];
-      currentReferenceIndex = 0;
-      completedReferences.clear();
-      bookingQualityResults = {};
-      
-      resetCurrentControlState();
-      
-      // Réinitialiser l'affichage des bookings
-      displayBookings();
-      document.getElementById('bookingSearchInput').value = '';
-    }
-
-    function resetQualityControl() {
-      // Arrêter tous les scanners actifs
-      if (window.isScanning) stopCamera();
-      if (window.isEanScanning) stopEanScanner();
-      
-      if (currentBooking) {
-        // En mode booking, retourner à la sélection de référence
-        resetCurrentControlState();
-        
-        // Retourner à l'étape de sélection de référence
-        document.getElementById("step8").classList.add("hidden");
-        document.getElementById("step8").classList.remove("active");
-        document.getElementById("step7").classList.add("hidden");
-        document.getElementById("step7").classList.remove("active");
-        document.getElementById("step6").classList.add("hidden");
-        document.getElementById("step6").classList.remove("active");
-        document.getElementById("step5").classList.add("hidden");
-        document.getElementById("step5").classList.remove("active");
-        
-        document.getElementById("step4").classList.remove("completed");
-        document.getElementById("step4").classList.add("active");
-        
-        // Scroll vers la section de sélection des références
-        document.getElementById("step4").scrollIntoView({ behavior: 'smooth' });
-      } else {
-        // Mode normal, retourner au début
-        resetCurrentControlState();
-        
-        document.getElementById("step8").classList.add("hidden");
-        document.getElementById("step7").classList.add("hidden");
-        document.getElementById("step6").classList.add("hidden");
-        document.getElementById("step5").classList.remove("completed");
-        document.getElementById("step5").classList.add("active");
-        
-        document.getElementById("step5").scrollIntoView({ behavior: 'smooth' });
-      }
-    }
+    // ================================================================================================
+    // 📸 GESTION DES PHOTOS
+    // ================================================================================================
 
     // Fonction pour ajouter des photos à un critère
     function addPhotos(criterionName) {
@@ -2661,7 +3005,7 @@
       const files = fileInput.files;
       
       if (!files || files.length === 0) {
-        alert("⚠️ Veuillez sélectionner au moins une photo");
+        window.NotificationManager.show("Veuillez sélectionner au moins une photo", 'warning');
         return;
       }
 
@@ -2674,13 +3018,13 @@
       Array.from(files).forEach(file => {
         // Vérifier le type de fichier
         if (!file.type.startsWith('image/')) {
-          alert(`❌ Le fichier "${file.name}" n'est pas une image valide`);
+          window.NotificationManager.show(`Le fichier "${file.name}" n'est pas une image valide`, 'error');
           return;
         }
 
         // Vérifier la taille (limite à 5MB)
         if (file.size > 5 * 1024 * 1024) {
-          alert(`❌ Le fichier "${file.name}" est trop volumineux (max 5MB)`);
+          window.NotificationManager.show(`Le fichier "${file.name}" est trop volumineux (max 5MB)`, 'error');
           return;
         }
 
@@ -2697,10 +3041,11 @@
 
           criterionPhotos[criterionName].push(photoData);
           displayPhotos(criterionName);
+          window.NotificationManager.show(`Photo "${file.name}" ajoutée avec succès`, 'success');
         };
 
         reader.onerror = function() {
-          alert(`❌ Erreur lors de la lecture du fichier "${file.name}"`);
+          window.NotificationManager.show(`Erreur lors de la lecture du fichier "${file.name}"`, 'error');
         };
 
         reader.readAsDataURL(file);
@@ -2743,6 +3088,8 @@
         if (navigator.vibrate) {
           navigator.vibrate(100);
         }
+        
+        window.NotificationManager.show("Photo supprimée avec succès", 'success');
       }
     }
 
@@ -2760,8 +3107,676 @@
       });
     }
 
-    // Initialiser les conteneurs de photos au chargement de la page
+    // ================================================================================================
+    // 📋 CONTRÔLE EAN - ÉTAPE 7
+    // ================================================================================================
+
+    function displayEanList() {
+      const eanList = document.getElementById('eanList');
+      
+      eanList.innerHTML = referenceEanList.map((item, index) => {
+        const isChecked = checkedEans.has(item[COL_EAN]);
+        const isNonTested = nonTestedEans.has(item[COL_EAN]);
+        
+        let statusClass = '';
+        let statusText = '';
+        let statusBadgeClass = '';
+        let actionButton = '';
+        
+        if (isChecked) {
+          statusClass = 'checked';
+          statusText = 'Vérifié ✅';
+          statusBadgeClass = 'found';
+          actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
+        } else if (isNonTested) {
+          statusClass = 'non-tested';
+          statusText = 'Non testé ⏭️';
+          statusBadgeClass = 'non-tested';
+          actionButton = `<button onclick="resetEanStatus('${item[COL_EAN]}')" style="background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">🔄 Reset</button>`;
+        } else {
+          statusClass = '';
+          statusText = 'En attente ⏳';
+          statusBadgeClass = 'pending';
+          actionButton = `<button onclick="markAsNonTested('${item[COL_EAN]}')" style="background: #ffc107; color: #000; border: none; padding: 5px 10px; border-radius: 3px; font-size: 0.8em; margin-left: 10px;">⏭️ Non testé</button>`;
+        }
+        
+        return `
+          <div class="ean-item ${statusClass}" id="ean-item-${index}">
+            <div class="ean-details">
+              <div class="ean-code">${item[COL_EAN] || 'N/A'}</div>
+              <div class="ean-info">
+                ${item[COL_CODE] || 'N/A'} | 
+                Taille: ${item[COL_TAILLE] || 'N/A'} | 
+                Couleur: ${item[COL_COULEUR] || 'N/A'}
+              </div>
+            </div>
+            <div style="display: flex; align-items: center;">
+              <div class="ean-status ${statusBadgeClass}">${statusText}</div>
+              ${actionButton}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateEanProgress() {
+      const total = referenceEanList.length;
+      const checked = checkedEans.size;
+      const nonTested = nonTestedEans.size;
+      const processed = checked + nonTested;
+      const percentage = total > 0 ? (processed / total) * 100 : 0;
+
+      document.getElementById('progressFill').style.width = percentage + '%';
+      document.getElementById('progressText').textContent = `${checked} vérifiés + ${nonTested} non testés = ${processed} / ${total} EAN traités`;
+
+      // Afficher un résumé si tous les EAN sont traités
+      if (processed === total && total > 0) {
+        showEanValidationResult();
+      }
+    }
+
+    function markAsNonTested(eanCode) {
+      if (checkedEans.has(eanCode)) {
+        return;
+      }
+      
+      nonTestedEans.add(eanCode);
+      displayEanList();
+      updateEanProgress();
+      
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+      
+      window.NotificationManager.show("EAN marqué comme non testé", 'info');
+    }
+
+    function resetEanStatus(eanCode) {
+      if (confirm("🔄 Remettre cet EAN en attente ?\n\nIl redeviendra disponible pour être scanné ou marqué comme non testé.")) {
+        checkedEans.delete(eanCode);
+        nonTestedEans.delete(eanCode);
+        displayEanList();
+        updateEanProgress();
+        
+        if (navigator.vibrate) {
+          navigator.vibrate(100);
+        }
+        
+        window.NotificationManager.show("EAN remis en attente", 'success');
+      }
+    }
+
+    function showEanValidationResult() {
+      const resultDiv = document.getElementById('eanValidationResult');
+      const total = referenceEanList.length;
+      const checked = checkedEans.size;
+      const nonTested = nonTestedEans.size;
+      
+      let statusClass = 'success';
+      let statusIcon = '✅';
+      let statusTitle = 'Contrôle EAN terminé';
+      
+      if (nonTested > 0) {
+        statusClass = 'warning';
+        statusIcon = '⚠️';
+        statusTitle = 'Contrôle EAN terminé avec réserves';
+      }
+      
+      resultDiv.innerHTML = `
+        <div class="validation-summary ${statusClass}">
+          <h4>${statusIcon} ${statusTitle}</h4>
+          <p>Référence <strong>${currentReference}</strong> : ${total} EAN au total</p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            <li><strong>${checked} EAN vérifiés</strong> ✅</li>
+            ${nonTested > 0 ? `<li><strong>${nonTested} EAN non testés</strong> ⏭️</li>` : ''}
+          </ul>
+          <p>Vous pouvez maintenant terminer cette référence.</p>
+        </div>
+      `;
+      resultDiv.style.display = 'block';
+    }
+
+    function startEanScanner() {
+      const video = document.getElementById('eanVideo');
+      const scanButton = document.getElementById('eanScanButton');
+      const stopButton = document.getElementById('eanStopButton');
+      
+      try {
+        // Arrêter toute session précédente
+        if (window.eanCodeReader) {
+          window.eanCodeReader.reset();
+        }
+        
+        window.eanCodeReader = new window.BrowserMultiFormatReader();
+        const constraints = {
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+        
+        window.eanCodeReader.decodeFromConstraints(constraints, video, (result, err) => {
+          if (result && window.isEanScanning) {
+            document.getElementById("eanInput").value = result.text;
+            checkEanForReference();
+            if (navigator.vibrate) {
+              navigator.vibrate(200);
+            }
+          }
+        }).then(() => {
+          window.isEanScanning = true;
+          video.style.display = 'block';
+          scanButton.style.display = 'none';
+          stopButton.style.display = 'inline-block';
+          document.getElementById('eanScannerContainer').style.display = 'block';
+        }).catch(err => {
+          console.error('Erreur caméra EAN:', err);
+          window.NotificationManager.show('Impossible d\'accéder à la caméra pour le scan EAN.', 'error');
+          resetEanCameraButtons();
+        });
+        
+      } catch (err) {
+        console.error('Erreur initialisation scanner EAN:', err);
+        window.NotificationManager.show('Erreur lors de l\'initialisation du scanner EAN.', 'error');
+        resetEanCameraButtons();
+      }
+    }
+
+    function stopEanScanner() {
+      window.isEanScanning = false;
+      
+      // Arrêter le flux vidéo EAN
+      const eanVideo = document.getElementById('eanVideo');
+      if (eanVideo && eanVideo.srcObject) {
+        const stream = eanVideo.srcObject;
+        if (stream) {
+          stream.getTracks().forEach(track => {
+            track.stop();
+          });
+          eanVideo.srcObject = null;
+        }
+      }
+      
+      // Arrêter le code reader EAN
+      if (window.eanCodeReader) {
+        try {
+          window.eanCodeReader.reset();
+        } catch (e) {
+          console.log('Erreur lors de l\'arrêt de la caméra EAN:', e);
+        }
+        window.eanCodeReader = null;
+      }
+      
+      resetEanCameraButtons();
+    }
+
+    function resetEanCameraButtons() {
+      const eanVideo = document.getElementById('eanVideo');
+      if (eanVideo) {
+        eanVideo.style.display = 'none';
+        if (eanVideo.srcObject) {
+          eanVideo.srcObject = null;
+        }
+      }
+      
+      document.getElementById('eanScanButton').style.display = 'inline-block';
+      document.getElementById('eanStopButton').style.display = 'none';
+      document.getElementById('eanScannerContainer').style.display = 'none';
+    }
+
+    function checkEanForReference() {
+      const scannedEan = document.getElementById("eanInput").value.trim();
+      
+      if (!scannedEan) {
+        window.NotificationManager.show("Veuillez saisir ou scanner un code EAN", 'warning');
+        return;
+      }
+
+      // Vérifier si cet EAN appartient à la référence actuelle
+      const matchingItem = referenceEanList.find(item => item[COL_EAN] === scannedEan);
+      
+      if (matchingItem) {
+        if (checkedEans.has(scannedEan)) {
+          window.NotificationManager.show("Cet EAN a déjà été vérifié", 'info');
+        } else {
+          // Si l'EAN était marqué comme non testé, le retirer de cette liste
+          if (nonTestedEans.has(scannedEan)) {
+            nonTestedEans.delete(scannedEan);
+          }
+          
+          checkedEans.add(scannedEan);
+          displayEanList();
+          updateEanProgress();
+          
+          // Feedback positif
+          if (navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+          }
+          
+          // Animation de succès
+          const itemIndex = referenceEanList.findIndex(item => item[COL_EAN] === scannedEan);
+          const itemElement = document.getElementById(`ean-item-${itemIndex}`);
+          if (itemElement) {
+            itemElement.style.transform = 'scale(1.05)';
+            setTimeout(() => {
+              itemElement.style.transform = 'scale(1)';
+            }, 200);
+          }
+          
+          window.NotificationManager.show("EAN vérifié avec succès!", 'success');
+        }
+      } else {
+        // Vérifier si cet EAN existe dans la base mais pour une autre référence
+        const otherItem = database.find(item => item[COL_EAN] === scannedEan);
+        
+        if (otherItem) {
+          window.NotificationManager.show(`Cet EAN appartient à une autre référence : ${otherItem[COL_REF]}\n\nRéférence attendue : ${currentReference}`, 'error');
+        } else {
+          window.NotificationManager.show("Code EAN non trouvé dans la base de données", 'error');
+        }
+      }
+      
+      // Vider le champ de saisie
+      document.getElementById("eanInput").value = "";
+    }
+
+    // ================================================================================================
+    // 🎯 GESTION DES RÉFÉRENCES ET DU BOOKING
+    // ================================================================================================
+
+    function completeCurrentReference() {
+      // Sauvegarder les résultats de cette référence
+      saveCurrentReferenceResults();
+      
+      // Marquer la référence comme terminée
+      const currentRef = bookingReferences[currentReferenceIndex];
+      if (currentRef) {
+        completedReferences.add(currentRef.reference);
+        
+        // Mettre à jour immédiatement l'affichage
+        updateBookingProgress();
+        displayBookingReferences();
+        
+        window.NotificationManager.show(`Référence ${currentRef.reference} terminée avec succès!`, 'success');
+      }
+      
+      // Passer à la référence suivante
+      moveToNextReference();
+    }
+
+    function saveCurrentReferenceResults() {
+      if (!currentProduct) return;
+      
+      const referenceKey = currentProduct[COL_REF];
+      bookingQualityResults[referenceKey] = {
+        reference: referenceKey,
+        product: currentProduct,
+        packageQuality: { ...packageQualityResults },
+        productQuality: { ...productQualityResults },
+        eanControl: {
+          total: referenceEanList.length,
+          checked: Array.from(checkedEans),
+          nonTested: Array.from(nonTestedEans),
+          eanList: [...referenceEanList]
+        },
+        timestamp: new Date().toISOString(),
+        photos: { ...criterionPhotos }
+      };
+      
+      // Sauvegarder dans le stockage local
+      window.StorageManager.save('bookingQualityResults', bookingQualityResults);
+    }
+
+    function skipToNextReference() {
+      if (confirm("⏭️ Passer à la référence suivante ?\n\nLes données du contrôle en cours seront perdues.")) {
+        moveToNextReference();
+      }
+    }
+
+    function moveToNextReference() {
+      // Réinitialiser les contrôles
+      resetCurrentControlState();
+      
+      // Passer à la référence suivante
+      currentReferenceIndex++;
+      
+      // Toujours mettre à jour l'affichage de la progression
+      updateBookingProgress();
+      displayBookingReferences();
+      
+      if (currentReferenceIndex >= bookingReferences.length) {
+        // Toutes les références ont été traitées
+        showBookingComplete();
+      } else {
+        // Mettre à jour les informations et retourner au scan
+        updateCurrentControlInfo();
+        
+        // Retourner à l'étape de scan
+        document.getElementById("step7").classList.remove("active");
+        document.getElementById("step7").classList.add("hidden");
+        document.getElementById("step6").classList.remove("active");
+        document.getElementById("step6").classList.add("hidden");
+        document.getElementById("step5").classList.remove("active");
+        document.getElementById("step5").classList.add("hidden");
+        
+        document.getElementById("step4").classList.remove("completed");
+        document.getElementById("step4").classList.add("active");
+        
+        // Scroll vers la section de scan
+        document.getElementById("step4").scrollIntoView({ behavior: 'smooth' });
+        
+        window.NotificationManager.show("Passage à la référence suivante!", 'info');
+      }
+    }
+
+    function resetCurrentControlState() {
+      // Réinitialiser toutes les variables de contrôle
+      currentProduct = null;
+      currentReference = null;
+      referenceEanList = [];
+      checkedEans.clear();
+      nonTestedEans.clear();
+      packageQualityResults = {};
+      productQualityResults = {};
+      criterionPhotos = {};
+      
+      // Réinitialiser les formulaires
+      resetQualityControls();
+      
+      // Masquer les résultats de recherche
+      document.getElementById("results").style.display = "none";
+      document.getElementById("barcodeInput").value = "";
+      document.getElementById("eanInput").value = "";
+      
+      // Arrêter tous les scanners
+      if (window.isScanning) window.stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+    }
+
+    function showBookingComplete() {
+      // Mettre à jour une dernière fois la progression avant d'afficher les rapports
+      updateBookingProgress();
+      displayBookingReferences();
+      
+      // Afficher la section des rapports
+      document.getElementById("step7").classList.remove("active");
+      document.getElementById("step7").classList.add("hidden");
+      document.getElementById("step6").classList.remove("active");
+      document.getElementById("step6").classList.add("hidden");
+      document.getElementById("step5").classList.remove("active");
+      document.getElementById("step5").classList.add("hidden");
+      document.getElementById("step4").classList.remove("active");
+      document.getElementById("step4").classList.add("hidden");
+      
+      document.getElementById("step8").classList.remove("hidden");
+      document.getElementById("step8").classList.add("active");
+      
+      // Mettre à jour les informations finales
+      updateFinalBookingInfo();
+      
+      // Scroll vers la section des rapports
+      document.getElementById("step8").scrollIntoView({ behavior: 'smooth' });
+      
+      window.NotificationManager.show("🎉 Booking terminé! Génération des rapports disponible.", 'success');
+    }
+
+    function updateFinalBookingInfo() {
+      const totalReferences = bookingReferences.length;
+      const completedCount = completedReferences.size;
+      
+      document.getElementById("reportsBookingInfo").innerHTML = `
+        <h4>🎉 Booking ${currentBooking.number} terminé !</h4>
+        <strong>Références contrôlées :</strong> ${completedCount} / ${totalReferences}<br/>
+        <strong>Statut :</strong> ${completedCount === totalReferences ? 'Contrôle complet ✅' : 'Contrôle partiel ⚠️'}
+      `;
+    }
+
+    function resetQualityControl() {
+      // Arrêter tous les scanners actifs
+      if (window.isScanning) window.stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      if (currentBooking) {
+        // En mode booking, retourner à la sélection de référence
+        resetCurrentControlState();
+        
+        // Retourner à l'étape de sélection de référence
+        document.getElementById("step8").classList.add("hidden");
+        document.getElementById("step8").classList.remove("active");
+        document.getElementById("step7").classList.add("hidden");
+        document.getElementById("step7").classList.remove("active");
+        document.getElementById("step6").classList.add("hidden");
+        document.getElementById("step6").classList.remove("active");
+        document.getElementById("step5").classList.add("hidden");
+        document.getElementById("step5").classList.remove("active");
+        document.getElementById("step4").classList.add("hidden");
+        document.getElementById("step4").classList.remove("active");
+        
+        document.getElementById("step3").classList.remove("completed");
+        document.getElementById("step3").classList.add("active");
+        
+        // Scroll vers la section de sélection des références
+        document.getElementById("step3").scrollIntoView({ behavior: 'smooth' });
+        
+        window.NotificationManager.show('Retour à la gestion du booking', 'info');
+      } else {
+        // Mode normal, retourner au début
+        resetCurrentControlState();
+        
+        document.getElementById("step8").classList.add("hidden");
+        document.getElementById("step7").classList.add("hidden");
+        document.getElementById("step6").classList.add("hidden");
+        document.getElementById("step5").classList.add("hidden");
+        document.getElementById("step4").classList.remove("completed");
+        document.getElementById("step4").classList.add("active");
+        
+        document.getElementById("step4").scrollIntoView({ behavior: 'smooth' });
+        
+        window.NotificationManager.show('Retour au scan de produit', 'info');
+      }
+    }
+
+    // ================================================================================================
+    // 📊 GÉNÉRATION DE RAPPORTS - ÉTAPE 8
+    // ================================================================================================
+
+    function generateIndividualReports() {
+      if (!currentBooking || Object.keys(bookingQualityResults).length === 0) {
+        window.NotificationManager.show("Aucune donnée de contrôle disponible pour générer des rapports", 'warning');
+        return;
+      }
+      
+      window.NotificationManager.show("🚧 Génération des rapports individuels en cours...", 'info');
+      
+      try {
+        // Créer un rapport pour chaque référence
+        Object.keys(bookingQualityResults).forEach(referenceKey => {
+          const referenceData = bookingQualityResults[referenceKey];
+          generateIndividualReferenceReport(referenceData);
+        });
+        
+        window.NotificationManager.show(`${Object.keys(bookingQualityResults).length} rapports individuels générés avec succès!`, 'success');
+      } catch (error) {
+        console.error('Erreur génération rapports:', error);
+        window.NotificationManager.show("Erreur lors de la génération des rapports individuels", 'error');
+      }
+    }
+
+    function generateIndividualReferenceReport(referenceData) {
+      const reportContent = `
+=== RAPPORT DE CONTRÔLE QUALITÉ ===
+Booking: ${currentBooking.number}
+Référence: ${referenceData.reference}
+Date: ${new Date(referenceData.timestamp).toLocaleString('fr-FR')}
+
+PRODUIT CONTRÔLÉ:
+- Code Article: ${referenceData.product[COL_CODE]}
+- Marque: ${referenceData.product[COL_MARQUE]}
+- Couleur: ${referenceData.product[COL_COULEUR]}
+- Taille: ${referenceData.product[COL_TAILLE]}
+- EAN: ${referenceData.product[COL_EAN]}
+
+CONTRÔLE CARTON:
+- Shipping Mark: ${referenceData.packageQuality.shipping_mark?.status} ${referenceData.packageQuality.shipping_mark?.comment ? '(' + referenceData.packageQuality.shipping_mark.comment + ')' : ''}
+- État du colis: ${referenceData.packageQuality.package_condition?.status} ${referenceData.packageQuality.package_condition?.comment ? '(' + referenceData.packageQuality.package_condition.comment + ')' : ''}
+- Bande de garantie: ${referenceData.packageQuality.warranty_seal?.status} ${referenceData.packageQuality.warranty_seal?.comment ? '(' + referenceData.packageQuality.warranty_seal.comment + ')' : ''}
+
+CONTRÔLE PRODUIT:
+- Test zip: ${referenceData.productQuality.zip_test?.status} ${referenceData.productQuality.zip_test?.comment ? '(' + referenceData.productQuality.zip_test.comment + ')' : ''}
+- Vérification boutonnage: ${referenceData.productQuality.button_check?.status} ${referenceData.productQuality.button_check?.comment ? '(' + referenceData.productQuality.button_check.comment + ')' : ''}
+- Vérification coloris: ${referenceData.productQuality.color_check?.status} ${referenceData.productQuality.color_check?.comment ? '(' + referenceData.productQuality.color_check.comment + ')' : ''}
+- Vérification finitions: ${referenceData.productQuality.finishing_check?.status} ${referenceData.productQuality.finishing_check?.comment ? '(' + referenceData.productQuality.finishing_check.comment + ')' : ''}
+
+CONTRÔLE EAN:
+- Total EAN: ${referenceData.eanControl.total}
+- EAN vérifiés: ${referenceData.eanControl.checked.length}
+- EAN non testés: ${referenceData.eanControl.nonTested.length}
+- Taux de vérification: ${Math.round((referenceData.eanControl.checked.length / referenceData.eanControl.total) * 100)}%
+
+PHOTOS ATTACHÉES: ${Object.values(referenceData.photos).reduce((total, photos) => total + photos.length, 0)} photo(s)
+      `;
+      
+      // Télécharger le rapport
+      downloadTextFile(reportContent, `rapport_${currentBooking.number}_${referenceData.reference}.txt`);
+    }
+
+    function generateGlobalBookingReport() {
+      if (!currentBooking || Object.keys(bookingQualityResults).length === 0) {
+        window.NotificationManager.show("Aucune donnée de contrôle disponible pour générer le rapport", 'warning');
+        return;
+      }
+      
+      window.NotificationManager.show("🚧 Génération du rapport global en cours...", 'info');
+      
+      try {
+        const references = Object.keys(bookingQualityResults);
+        const totalReferences = bookingReferences.length;
+        const controlledReferences = references.length;
+        
+        let reportContent = `
+=== RAPPORT GLOBAL DE CONTRÔLE QUALITÉ ===
+Booking: ${currentBooking.number}
+Date de génération: ${new Date().toLocaleString('fr-FR')}
+
+RÉSUMÉ:
+- Total références dans le booking: ${totalReferences}
+- Références contrôlées: ${controlledReferences}
+- Taux de couverture: ${Math.round((controlledReferences / totalReferences) * 100)}%
+
+DÉTAIL PAR RÉFÉRENCE:
+`;
+        
+        references.forEach((referenceKey, index) => {
+          const referenceData = bookingQualityResults[referenceKey];
+          const packageIssues = Object.values(referenceData.packageQuality).filter(q => q.status === 'not_ok').length;
+          const productIssues = Object.values(referenceData.productQuality).filter(q => q.status === 'not_ok').length;
+          const eanVerificationRate = Math.round((referenceData.eanControl.checked.length / referenceData.eanControl.total) * 100);
+          
+          reportContent += `
+${index + 1}. ${referenceData.reference} (${referenceData.product[COL_MARQUE]})
+   - Problèmes carton: ${packageIssues}/3
+   - Problèmes produit: ${productIssues}/4
+   - Vérification EAN: ${eanVerificationRate}% (${referenceData.eanControl.checked.length}/${referenceData.eanControl.total})
+   - Photos: ${Object.values(referenceData.photos).reduce((total, photos) => total + photos.length, 0)}
+`;
+        });
+        
+        // Statistiques globales
+        const totalPackageIssues = references.reduce((total, ref) => {
+          return total + Object.values(bookingQualityResults[ref].packageQuality).filter(q => q.status === 'not_ok').length;
+        }, 0);
+        
+        const totalProductIssues = references.reduce((total, ref) => {
+          return total + Object.values(bookingQualityResults[ref].productQuality).filter(q => q.status === 'not_ok').length;
+        }, 0);
+        
+        const totalEanChecked = references.reduce((total, ref) => {
+          return total + bookingQualityResults[ref].eanControl.checked.length;
+        }, 0);
+        
+        const totalEan = references.reduce((total, ref) => {
+          return total + bookingQualityResults[ref].eanControl.total;
+        }, 0);
+        
+        reportContent += `
+STATISTIQUES GLOBALES:
+- Total problèmes carton: ${totalPackageIssues}
+- Total problèmes produit: ${totalProductIssues}
+- Total EAN vérifiés: ${totalEanChecked}/${totalEan} (${Math.round((totalEanChecked / totalEan) * 100)}%)
+- Total photos: ${references.reduce((total, ref) => total + Object.values(bookingQualityResults[ref].photos).reduce((sum, photos) => sum + photos.length, 0), 0)}
+
+CONCLUSION:
+Booking ${totalPackageIssues + totalProductIssues === 0 ? '✅ CONFORME' : '⚠️ NON-CONFORME'} - Contrôle terminé
+        `;
+        
+        // Télécharger le rapport global
+        downloadTextFile(reportContent, `rapport_global_${currentBooking.number}_${new Date().toISOString().split('T')[0]}.txt`);
+        
+        window.NotificationManager.show("Rapport global généré avec succès!", 'success');
+      } catch (error) {
+        console.error('Erreur génération rapport global:', error);
+        window.NotificationManager.show("Erreur lors de la génération du rapport global", 'error');
+      }
+    }
+
+    function downloadTextFile(content, filename) {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function startNewBooking() {
+      if (confirm("🆕 Commencer un nouveau booking ?\n\nToutes les données actuelles seront perdues.")) {
+        // Réinitialiser complètement l'application
+        resetApplication();
+        
+        // Retourner à l'étape de sélection de booking
+        document.getElementById("step8").classList.remove("active");
+        document.getElementById("step8").classList.add("hidden");
+        document.getElementById("step2").classList.remove("completed");
+        document.getElementById("step2").classList.add("active");
+        
+        // Scroll vers la sélection de booking
+        document.getElementById("step2").scrollIntoView({ behavior: 'smooth' });
+        
+        window.NotificationManager.show("Nouveau booking - sélectionnez un booking", 'success');
+      }
+    }
+
+    function resetApplication() {
+      // Réinitialiser toutes les variables
+      currentBooking = null;
+      bookingReferences = [];
+      currentReferenceIndex = 0;
+      completedReferences.clear();
+      bookingQualityResults = {};
+      
+      resetCurrentControlState();
+      
+      // Nettoyer le stockage local des résultats
+      window.StorageManager.remove('currentBooking');
+      window.StorageManager.remove('bookingReferences');
+      window.StorageManager.remove('bookingQualityResults');
+      
+      // Réinitialiser l'affichage des bookings
+      displayBookings();
+      document.getElementById('bookingSearchInput').value = '';
+    }
+
+    // ================================================================================================
+    // 🚀 INITIALISATION DE L'APPLICATION
+    // ================================================================================================
+
+    // Gestionnaire d'événements pour l'entrée clavier
     document.addEventListener('DOMContentLoaded', function() {
+      // Initialiser les conteneurs de photos
       initializePhotoContainers();
       
       const barcodeInput = document.getElementById('barcodeInput');
@@ -2783,19 +3798,43 @@
           }
         });
       }
-    });
-
-    // Initialisation au chargement de la page
-    document.addEventListener('DOMContentLoaded', function() {
-      const barcodeInput = document.getElementById('barcodeInput');
-      if (barcodeInput) {
-        barcodeInput.addEventListener('keypress', function(e) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            findProduct();
-          }
-        });
+      
+      // Charger les données sauvegardées au démarrage
+      const savedDatabase = window.StorageManager.load('database');
+      if (savedDatabase) {
+        database = savedDatabase;
+        bddLoaded = true;
+        updateBddStatus('success', `${database.length} articles chargés depuis la sauvegarde`, false);
       }
+      
+      const savedBookingData = window.StorageManager.load('bookingData');
+      const savedAvailableBookings = window.StorageManager.load('availableBookings');
+      if (savedBookingData && savedAvailableBookings) {
+        bookingData = savedBookingData;
+        availableBookings = savedAvailableBookings;
+        bookingLoaded = true;
+        updateBookingStatus('success', `${bookingData.length} lignes chargées depuis la sauvegarde - ${availableBookings.length} bookings trouvés`, false);
+        
+        if (bddLoaded && bookingLoaded) {
+          displayBookings();
+        }
+      }
+      
+      // Charger le booking en cours s'il existe
+      const savedCurrentBooking = window.StorageManager.load('currentBooking');
+      const savedBookingReferences = window.StorageManager.load('bookingReferences');
+      const savedBookingQualityResults = window.StorageManager.load('bookingQualityResults');
+      
+      if (savedCurrentBooking && savedBookingReferences) {
+        currentBooking = savedCurrentBooking;
+        bookingReferences = savedBookingReferences;
+        if (savedBookingQualityResults) {
+          bookingQualityResults = savedBookingQualityResults;
+        }
+      }
+      
+      // Mise à jour du statut global
+      updateGlobalStatus();
     });
   </script>
 </body>
