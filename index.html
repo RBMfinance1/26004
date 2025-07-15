@@ -1771,8 +1771,8 @@
       </div>
 
       <div class="button-row">
-        <button onclick="generateIndividualReports()" style="background: #17a2b8;">📄 Rapports individuels (par référence)</button>
-        <button onclick="generateGlobalBookingReport()" style="background: #dc3545;">📊 Rapport global du booking</button>
+        <button onclick="generateIndividualReports()" style="background: #17a2b8;">📄 Rapports PDF individuels</button>
+        <button onclick="generateGlobalBookingReport()" style="background: #dc3545;">📊 Rapport PDF global du booking</button>
         <button onclick="startNewBooking()" style="background: #28a745;">🆕 Nouveau booking</button>
       </div>
     </div>
@@ -3578,7 +3578,7 @@
     }
 
     // ================================================================================================
-    // 📊 GÉNÉRATION DE RAPPORTS - ÉTAPE 8
+    // 📊 GÉNÉRATION DE RAPPORTS PDF - ÉTAPE 8 (AVEC FORMAT DU PREMIER FICHIER)
     // ================================================================================================
 
     function generateIndividualReports() {
@@ -3587,58 +3587,583 @@
         return;
       }
       
-      window.NotificationManager.show("🚧 Génération des rapports individuels en cours...", 'info');
+      window.NotificationManager.show("🚧 Génération des rapports PDF individuels en cours...", 'info');
       
       try {
-        // Créer un rapport pour chaque référence
+        // Créer un rapport PDF pour chaque référence avec le format exact du premier fichier
         Object.keys(bookingQualityResults).forEach(referenceKey => {
           const referenceData = bookingQualityResults[referenceKey];
-          generateIndividualReferenceReport(referenceData);
+          generateIndividualPDFReport(referenceData);
         });
         
-        window.NotificationManager.show(`${Object.keys(bookingQualityResults).length} rapports individuels générés avec succès!`, 'success');
+        window.NotificationManager.show(`${Object.keys(bookingQualityResults).length} rapports PDF individuels générés avec succès!`, 'success');
       } catch (error) {
         console.error('Erreur génération rapports:', error);
         window.NotificationManager.show("Erreur lors de la génération des rapports individuels", 'error');
       }
     }
 
-    function generateIndividualReferenceReport(referenceData) {
-      const reportContent = `
-=== RAPPORT DE CONTRÔLE QUALITÉ ===
-Booking: ${currentBooking.number}
-Référence: ${referenceData.reference}
-Date: ${new Date(referenceData.timestamp).toLocaleString('fr-FR')}
-
-PRODUIT CONTRÔLÉ:
-- Code Article: ${referenceData.product[COL_CODE]}
-- Marque: ${referenceData.product[COL_MARQUE]}
-- Couleur: ${referenceData.product[COL_COULEUR]}
-- Taille: ${referenceData.product[COL_TAILLE]}
-- EAN: ${referenceData.product[COL_EAN]}
-
-CONTRÔLE CARTON:
-- Shipping Mark: ${referenceData.packageQuality.shipping_mark?.status} ${referenceData.packageQuality.shipping_mark?.comment ? '(' + referenceData.packageQuality.shipping_mark.comment + ')' : ''}
-- État du colis: ${referenceData.packageQuality.package_condition?.status} ${referenceData.packageQuality.package_condition?.comment ? '(' + referenceData.packageQuality.package_condition.comment + ')' : ''}
-- Bande de garantie: ${referenceData.packageQuality.warranty_seal?.status} ${referenceData.packageQuality.warranty_seal?.comment ? '(' + referenceData.packageQuality.warranty_seal.comment + ')' : ''}
-
-CONTRÔLE PRODUIT:
-- Test zip: ${referenceData.productQuality.zip_test?.status} ${referenceData.productQuality.zip_test?.comment ? '(' + referenceData.productQuality.zip_test.comment + ')' : ''}
-- Vérification boutonnage: ${referenceData.productQuality.button_check?.status} ${referenceData.productQuality.button_check?.comment ? '(' + referenceData.productQuality.button_check.comment + ')' : ''}
-- Vérification coloris: ${referenceData.productQuality.color_check?.status} ${referenceData.productQuality.color_check?.comment ? '(' + referenceData.productQuality.color_check.comment + ')' : ''}
-- Vérification finitions: ${referenceData.productQuality.finishing_check?.status} ${referenceData.productQuality.finishing_check?.comment ? '(' + referenceData.productQuality.finishing_check.comment + ')' : ''}
-
-CONTRÔLE EAN:
-- Total EAN: ${referenceData.eanControl.total}
-- EAN vérifiés: ${referenceData.eanControl.checked.length}
-- EAN non testés: ${referenceData.eanControl.nonTested.length}
-- Taux de vérification: ${Math.round((referenceData.eanControl.checked.length / referenceData.eanControl.total) * 100)}%
-
-PHOTOS ATTACHÉES: ${Object.values(referenceData.photos).reduce((total, photos) => total + photos.length, 0)} photo(s)
-      `;
+    function generateIndividualPDFReport(referenceData) {
+      // Arrêter toutes les caméras en cours d'utilisation
+      if (window.isScanning) window.stopCamera();
+      if (window.isEanScanning) stopEanScanner();
       
-      // Télécharger le rapport
-      downloadTextFile(reportContent, `rapport_${currentBooking.number}_${referenceData.reference}.txt`);
+      if (!referenceData || !referenceData.product) {
+        alert("Aucune donnée de référence disponible pour générer le rapport");
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      
+      let yPosition = 20;
+      const lineHeight = 8;
+      const sectionSpacing = 15;
+      // Ajustement pour format A4 et meilleure gestion de l'espace du pied de page
+      const pageHeight = 270; // Réduit de 280 à 270 pour laisser plus d'espace au pied de page
+      
+      // Couleurs exactes du premier fichier
+      const colors = {
+        primary: [102, 126, 234], // Bleu principal
+        secondary: [118, 75, 162], // Violet
+        success: [40, 167, 69], // Vert
+        danger: [220, 53, 69], // Rouge
+        warning: [255, 193, 7], // Jaune
+        info: [23, 162, 184], // Cyan
+        light: [248, 249, 250], // Gris très clair
+        lightBlue: [224, 240, 255] // Bleu très clair
+      };
+      
+      // En-tête du document avec fond coloré (identique au premier fichier)
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.rect(10, 10, 190, 25, 'F');
+      
+      doc.setTextColor(255, 255, 255); // Texte blanc
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('RAPPORT DE CONTROLE QUALITE', 20, 28);
+      
+      // Reset couleur texte
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition = 45;
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'normal');
+      doc.text('Date de generation: ' + new Date().toLocaleString('fr-FR'), 20, yPosition);
+      doc.text('Reference du rapport: QC-' + Date.now(), 120, yPosition);
+      
+      yPosition += sectionSpacing + 5;
+      
+      // Section 1: Informations du produit (identique au premier fichier)
+      doc.setFillColor(colors.lightBlue[0], colors.lightBlue[1], colors.lightBlue[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.text('INFORMATIONS PRODUIT', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      const productInfo = [
+        'Booking: ' + (currentBooking ? currentBooking.number : 'N/A'),
+        'Reference: ' + (referenceData.product[COL_REF] || 'N/A'),
+        'Code Article: ' + (referenceData.product[COL_CODE] || 'N/A'),
+        'Marque: ' + (referenceData.product[COL_MARQUE] || 'N/A'),
+        'Couleur: ' + (referenceData.product[COL_COULEUR] || 'N/A'),
+        'Taille: ' + (referenceData.product[COL_TAILLE] || 'N/A'),
+        'EAN: ' + (referenceData.product[COL_EAN] || 'N/A')
+      ];
+      
+      productInfo.forEach(info => {
+        doc.text(info, 20, yPosition);
+        yPosition += lineHeight;
+      });
+      
+      yPosition += sectionSpacing;
+      
+      // Vérifier si nouvelle page nécessaire avant chaque section
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      // Section 2: Contrôle Qualité - Carton (identique au premier fichier)
+      doc.setFillColor(colors.success[0], colors.success[1], colors.success[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('CONTROLE QUALITE - CARTON', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      const packageCriteria = [
+        { key: 'shipping_mark', label: 'Shipping Mark' },
+        { key: 'package_condition', label: 'Etat du colis' },
+        { key: 'warranty_seal', label: 'Bande de garantie' }
+      ];
+      
+      packageCriteria.forEach(criterion => {
+        if (referenceData.packageQuality[criterion.key]) {
+          const result = referenceData.packageQuality[criterion.key];
+          const isOk = result.status === 'ok';
+          
+          // Vérifier si assez de place pour ce critère
+          if (yPosition > pageHeight - 30) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          
+          // Couleur du statut
+          doc.setTextColor(isOk ? colors.success[0] : colors.danger[0], 
+                         isOk ? colors.success[1] : colors.danger[1], 
+                         isOk ? colors.success[2] : colors.danger[2]);
+          const status = isOk ? '[OK]' : '[PAS OK]';
+          
+          doc.setTextColor(0, 0, 0);
+          doc.text(criterion.label + ': ', 20, yPosition);
+          doc.setTextColor(isOk ? colors.success[0] : colors.danger[0], 
+                         isOk ? colors.success[1] : colors.danger[1], 
+                         isOk ? colors.success[2] : colors.danger[2]);
+          doc.text(status, 80, yPosition);
+          doc.setTextColor(0, 0, 0);
+          yPosition += lineHeight;
+          
+          if (result.comment && result.comment.trim()) {
+            doc.setFontSize(9);
+            doc.setTextColor(100, 100, 100);
+            const comments = doc.splitTextToSize('  -> ' + result.comment, 165);
+            comments.forEach(line => {
+              if (yPosition > pageHeight - 15) {
+                doc.addPage();
+                yPosition = 20;
+              }
+              doc.text(line, 25, yPosition);
+              yPosition += 6;
+            });
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+          }
+          
+          if (result.photos && result.photos.length > 0) {
+            doc.setFontSize(9);
+            doc.setTextColor(colors.info[0], colors.info[1], colors.info[2]);
+            doc.text('  -> ' + result.photos.length + ' photo(s) documentaire(s)', 25, yPosition);
+            yPosition += 6;
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+          }
+          
+          yPosition += 3; // Espacement entre critères
+        }
+      });
+      
+      yPosition += sectionSpacing;
+      
+      // Vérifier si nouvelle page nécessaire
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      // Section 3: Contrôle Qualité - Produit (identique au premier fichier)
+      doc.setFillColor(colors.info[0], colors.info[1], colors.info[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('CONTROLE QUALITE - PRODUIT', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      const productCriteria = [
+        { key: 'zip_test', label: 'Verification zip' },
+        { key: 'button_check', label: 'Verification boutonnage' },
+        { key: 'color_check', label: 'Verification coloris' },
+        { key: 'finishing_check', label: 'Verification finition/coutures' }
+      ];
+      
+      productCriteria.forEach(criterion => {
+        if (referenceData.productQuality[criterion.key]) {
+          const result = referenceData.productQuality[criterion.key];
+          let status, color;
+          
+          // Vérifier si assez de place pour ce critère
+          if (yPosition > pageHeight - 30) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          
+          if (result.status === 'ok') {
+            status = '[OK]';
+            color = colors.success;
+          } else if (result.status === 'not_ok') {
+            status = '[PAS OK]';
+            color = colors.danger;
+          } else {
+            status = '[NON APPLICABLE]';
+            color = colors.warning;
+          }
+          
+          doc.setTextColor(0, 0, 0);
+          doc.text(criterion.label + ': ', 20, yPosition);
+          doc.setTextColor(color[0], color[1], color[2]);
+          doc.text(status, 80, yPosition);
+          doc.setTextColor(0, 0, 0);
+          yPosition += lineHeight;
+          
+          if (result.comment && result.comment.trim()) {
+            doc.setFontSize(9);
+            doc.setTextColor(100, 100, 100);
+            const comments = doc.splitTextToSize('  -> ' + result.comment, 165);
+            comments.forEach(line => {
+              if (yPosition > pageHeight - 15) {
+                doc.addPage();
+                yPosition = 20;
+              }
+              doc.text(line, 25, yPosition);
+              yPosition += 6;
+            });
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+          }
+          
+          if (result.photos && result.photos.length > 0) {
+            doc.setFontSize(9);
+            doc.setTextColor(colors.info[0], colors.info[1], colors.info[2]);
+            doc.text('  -> ' + result.photos.length + ' photo(s) documentaire(s)', 25, yPosition);
+            yPosition += 6;
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+          }
+          
+          yPosition += 3; // Espacement entre critères
+        }
+      });
+      
+      yPosition += sectionSpacing;
+      
+      // Vérifier si nouvelle page nécessaire
+      if (yPosition > pageHeight - 80) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      // Section 4: Contrôle EAN (identique au premier fichier)
+      doc.setFillColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('CONTROLE EAN - REFERENCE', 20, yPosition);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      if (referenceData.eanControl) {
+        doc.text('Reference controlee: ' + referenceData.reference, 20, yPosition);
+        yPosition += lineHeight;
+        
+        const totalEan = referenceData.eanControl.total || 0;
+        const foundEan = referenceData.eanControl.checked ? referenceData.eanControl.checked.length : 0;
+        const nonTestedEan = referenceData.eanControl.nonTested ? referenceData.eanControl.nonTested.length : 0;
+        const processedEan = foundEan + nonTestedEan;
+        
+        doc.text('Total EAN de la reference: ' + totalEan, 20, yPosition);
+        yPosition += lineHeight;
+        
+        doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+        doc.text('EAN verifies: ' + foundEan, 20, yPosition);
+        yPosition += lineHeight;
+        
+        doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+        doc.text('EAN non testes: ' + nonTestedEan, 20, yPosition);
+        yPosition += lineHeight;
+        
+        doc.setTextColor(0, 0, 0);
+        doc.text('Progression: ' + processedEan + '/' + totalEan + ' (' + (totalEan > 0 ? ((processedEan/totalEan)*100).toFixed(1) : 0) + '%)', 20, yPosition);
+        yPosition += lineHeight + 5;
+        
+        // Détail des EAN
+        doc.setFontSize(10);
+        doc.text('Detail par EAN:', 20, yPosition);
+        yPosition += lineHeight;
+        
+        if (referenceData.eanControl.eanList) {
+          referenceData.eanControl.eanList.forEach(item => {
+            const isFound = referenceData.eanControl.checked && referenceData.eanControl.checked.includes(item[COL_EAN]);
+            const isNonTested = referenceData.eanControl.nonTested && referenceData.eanControl.nonTested.includes(item[COL_EAN]);
+            
+            // Vérifier si assez de place pour cet EAN
+            if (yPosition > pageHeight - 15) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
+            let status, color;
+            if (isFound) {
+              status = '[VERIFIE]';
+              color = colors.success;
+            } else if (isNonTested) {
+              status = '[NON TESTE]';
+              color = colors.warning;
+            } else {
+              status = '[EN ATTENTE]';
+              color = [100, 100, 100]; // Gris
+            }
+            
+            doc.setTextColor(0, 0, 0);
+            doc.text(item[COL_EAN] + ' (' + item[COL_TAILLE] + ') ', 25, yPosition);
+            doc.setTextColor(color[0], color[1], color[2]);
+            doc.text(status, 130, yPosition);
+            doc.setTextColor(0, 0, 0);
+            yPosition += 6;
+          });
+        }
+      } else {
+        doc.setTextColor(colors.danger[0], colors.danger[1], colors.danger[2]);
+        doc.text('Controle EAN non effectue', 20, yPosition);
+        doc.setTextColor(0, 0, 0);
+        yPosition += lineHeight;
+      }
+      
+      yPosition += sectionSpacing;
+      
+      // Section 5: Photos du contrôle (identique au premier fichier)
+      const totalPhotos = Object.values(referenceData.photos || {}).reduce((total, photos) => total + photos.length, 0);
+      
+      if (totalPhotos > 0) {
+        // Vérifier si nouvelle page nécessaire pour les photos
+        if (yPosition > pageHeight - 100) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFillColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
+        doc.rect(15, yPosition - 8, 180, 15, 'F');
+        
+        doc.setFontSize(16);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.text('PHOTOS DU CONTROLE', 20, yPosition);
+        doc.setTextColor(0, 0, 0);
+        
+        yPosition += 15;
+        
+        const photoWidth = 70;
+        const photoHeight = 52;
+        const photosPerRow = 2;
+        const marginBetweenPhotos = 10;
+        
+        let photoIndex = 0;
+        
+        Object.entries(referenceData.photos || {}).forEach(([criterionName, photos]) => {
+          if (photos.length > 0) {
+            // Calculer l'espace nécessaire pour ce critère
+            const photosForThisCriterion = photos.length;
+            const rowsNeeded = Math.ceil(photosForThisCriterion / photosPerRow);
+            const spaceNeeded = 15 + (rowsNeeded * (photoHeight + 20)); // Titre + photos
+            
+            // Vérifier si on a assez de place pour le titre ET au moins une ligne de photos
+            if (yPosition + spaceNeeded > pageHeight - 20) {
+              doc.addPage();
+              yPosition = 20;
+              photoIndex = 0; // Reset index photos pour nouvelle page
+            }
+            
+            // Titre du critère
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+            
+            // Convertir le nom du critère en français
+            const criterionLabels = {
+              'shipping_mark': 'Shipping Mark',
+              'package_condition': 'Etat du colis',
+              'warranty_seal': 'Bande de garantie',
+              'zip_test': 'Verification zip',
+              'button_check': 'Verification boutonnage',
+              'color_check': 'Verification coloris',
+              'finishing_check': 'Verification finition/coutures'
+            };
+            
+            const criterionLabel = criterionLabels[criterionName] || criterionName;
+            doc.text(criterionLabel + ' (' + photos.length + ' photo' + (photos.length > 1 ? 's' : '') + ')', 20, yPosition);
+            doc.setTextColor(0, 0, 0);
+            yPosition += 10;
+            
+            // Sauvegarder la position de départ pour ce critère
+            const startYForCriterion = yPosition;
+            let maxYForCriterion = yPosition;
+            
+            photos.forEach((photo, index) => {
+              const row = Math.floor(index / photosPerRow);
+              const col = index % photosPerRow;
+              
+              const x = 20 + col * (photoWidth + marginBetweenPhotos);
+              const y = startYForCriterion + row * (photoHeight + 20);
+              
+              // Vérifier si cette photo dépasse la page
+              if (y + photoHeight > pageHeight - 10) {
+                // Ajouter une nouvelle page et continuer
+                doc.addPage();
+                yPosition = 20;
+                
+                // Recalculer la position pour la nouvelle page
+                const newRow = Math.floor(index / photosPerRow) - Math.floor(photos.findIndex(p => photos.indexOf(p) === index && y + photoHeight > pageHeight - 10) / photosPerRow);
+                const newY = yPosition + newRow * (photoHeight + 20);
+                
+                try {
+                  doc.addImage(photo.data, 'JPEG', x, newY, photoWidth, photoHeight);
+                  doc.setFontSize(8);
+                  doc.setTextColor(100, 100, 100);
+                  doc.text(photo.timestamp, x, newY + photoHeight + 8);
+                  doc.setTextColor(0, 0, 0);
+                  maxYForCriterion = Math.max(maxYForCriterion, newY + photoHeight + 15);
+                } catch (e) {
+                  console.error('Erreur lors de l\'ajout de l\'image:', e);
+                  doc.setFontSize(9);
+                  doc.text('[Image non disponible: ' + photo.name + ']', x, newY + 20);
+                  maxYForCriterion = Math.max(maxYForCriterion, newY + 30);
+                }
+              } else {
+                try {
+                  doc.addImage(photo.data, 'JPEG', x, y, photoWidth, photoHeight);
+                  doc.setFontSize(8);
+                  doc.setTextColor(100, 100, 100);
+                  doc.text(photo.timestamp, x, y + photoHeight + 8);
+                  doc.setTextColor(0, 0, 0);
+                  maxYForCriterion = Math.max(maxYForCriterion, y + photoHeight + 15);
+                } catch (e) {
+                  console.error('Erreur lors de l\'ajout de l\'image:', e);
+                  doc.setFontSize(9);
+                  doc.text('[Image non disponible: ' + photo.name + ']', x, y + 20);
+                  maxYForCriterion = Math.max(maxYForCriterion, y + 30);
+                }
+              }
+            });
+            
+            // Ajuster yPosition pour le prochain critère
+            yPosition = maxYForCriterion + 10;
+          }
+        });
+      }
+      
+      // Section 6: Résumé et conclusion (identique au premier fichier)
+      if (yPosition > pageHeight - 80) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      yPosition += sectionSpacing;
+      
+      // Calcul des statistiques finales
+      const packageIssues = Object.values(referenceData.packageQuality || {}).filter(result => result.status === 'not_ok').length;
+      const productIssues = Object.values(referenceData.productQuality || {}).filter(result => result.status === 'not_ok').length;
+      const totalQualityIssues = packageIssues + productIssues;
+      
+      const qualityStatus = totalQualityIssues === 0 ? 'CONFORME' : 'NON CONFORME';
+      const eanCompleteness = (referenceData.eanControl && referenceData.eanControl.nonTested && referenceData.eanControl.nonTested.length === 0) ? 'COMPLET' : 
+                               (referenceData.eanControl ? 'PARTIEL' : 'NON EFFECTUE');
+      
+      // En-tête résumé avec couleur selon le statut
+      const resumeColor = totalQualityIssues === 0 ? colors.success : colors.danger;
+      doc.setFillColor(resumeColor[0], resumeColor[1], resumeColor[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('RESUME DU CONTROLE', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      // Statut qualité avec couleur
+      doc.setTextColor(totalQualityIssues === 0 ? colors.success[0] : colors.danger[0],
+                     totalQualityIssues === 0 ? colors.success[1] : colors.danger[1],
+                     totalQualityIssues === 0 ? colors.success[2] : colors.danger[2]);
+      doc.text('Statut qualite: ' + qualityStatus, 20, yPosition);
+      yPosition += lineHeight;
+      
+      doc.setTextColor(0, 0, 0);
+      doc.text('Problemes detectes: ' + totalQualityIssues + ' (Carton: ' + packageIssues + ', Produit: ' + productIssues + ')', 20, yPosition);
+      yPosition += lineHeight;
+      doc.text('Controle EAN: ' + eanCompleteness, 20, yPosition);
+      yPosition += lineHeight;
+      doc.text('Photos documentaires: ' + totalPhotos, 20, yPosition);
+      yPosition += lineHeight;
+      
+      // Statut du contrôle
+      let controlStatus = 'COMPLET';
+      if (!referenceData.packageQuality || !referenceData.productQuality || !referenceData.eanControl) {
+        controlStatus = 'PARTIEL';
+      }
+      doc.text('Controle effectue: ' + controlStatus, 20, yPosition);
+      yPosition += sectionSpacing;
+      
+      // Conclusion avec couleur
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      if (totalQualityIssues === 0 && (!referenceData.eanControl || !referenceData.eanControl.nonTested || referenceData.eanControl.nonTested.length === 0)) {
+        doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+        doc.text('CONTROLE VALIDE - Produit conforme', 20, yPosition);
+      } else if (controlStatus === 'PARTIEL') {
+        doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+        doc.text('RAPPORT PARTIEL - Controle en cours', 20, yPosition);
+      } else {
+        doc.setTextColor(colors.danger[0], colors.danger[1], colors.danger[2]);
+        doc.text('CONTROLE AVEC RESERVES - Voir details ci-dessus', 20, yPosition);
+      }
+      doc.setTextColor(0, 0, 0);
+      
+      // Pied de page
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setFont(undefined, 'italic');
+        doc.setTextColor(100, 100, 100);
+        doc.text('Rapport genere par Matrice Controle Qualite - Page ' + i + '/' + pageCount, 20, 285);
+        doc.text(new Date().toLocaleString('fr-FR'), 150, 285);
+      }
+      
+      // Génération du nom de fichier
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const bookingNumber = currentBooking ? currentBooking.number : 'BOOKING';
+      const productRef = (referenceData.reference || 'REF').replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
+      const filename = 'Rapport_QC_' + bookingNumber + '_' + productRef + '_' + timestamp + '.pdf';
+      
+      // Téléchargement ou ouverture selon le device
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        window.open(doc.output('bloburl'));
+      } else {
+        const blob = doc.output('blob');
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }
     }
 
     function generateGlobalBookingReport() {
@@ -3647,89 +4172,290 @@ PHOTOS ATTACHÉES: ${Object.values(referenceData.photos).reduce((total, photos) 
         return;
       }
       
-      window.NotificationManager.show("🚧 Génération du rapport global en cours...", 'info');
+      window.NotificationManager.show("🚧 Génération du rapport PDF global en cours...", 'info');
       
       try {
-        const references = Object.keys(bookingQualityResults);
-        const totalReferences = bookingReferences.length;
-        const controlledReferences = references.length;
-        
-        let reportContent = `
-=== RAPPORT GLOBAL DE CONTRÔLE QUALITÉ ===
-Booking: ${currentBooking.number}
-Date de génération: ${new Date().toLocaleString('fr-FR')}
-
-RÉSUMÉ:
-- Total références dans le booking: ${totalReferences}
-- Références contrôlées: ${controlledReferences}
-- Taux de couverture: ${Math.round((controlledReferences / totalReferences) * 100)}%
-
-DÉTAIL PAR RÉFÉRENCE:
-`;
-        
-        references.forEach((referenceKey, index) => {
-          const referenceData = bookingQualityResults[referenceKey];
-          const packageIssues = Object.values(referenceData.packageQuality).filter(q => q.status === 'not_ok').length;
-          const productIssues = Object.values(referenceData.productQuality).filter(q => q.status === 'not_ok').length;
-          const eanVerificationRate = Math.round((referenceData.eanControl.checked.length / referenceData.eanControl.total) * 100);
-          
-          reportContent += `
-${index + 1}. ${referenceData.reference} (${referenceData.product[COL_MARQUE]})
-   - Problèmes carton: ${packageIssues}/3
-   - Problèmes produit: ${productIssues}/4
-   - Vérification EAN: ${eanVerificationRate}% (${referenceData.eanControl.checked.length}/${referenceData.eanControl.total})
-   - Photos: ${Object.values(referenceData.photos).reduce((total, photos) => total + photos.length, 0)}
-`;
-        });
-        
-        // Statistiques globales
-        const totalPackageIssues = references.reduce((total, ref) => {
-          return total + Object.values(bookingQualityResults[ref].packageQuality).filter(q => q.status === 'not_ok').length;
-        }, 0);
-        
-        const totalProductIssues = references.reduce((total, ref) => {
-          return total + Object.values(bookingQualityResults[ref].productQuality).filter(q => q.status === 'not_ok').length;
-        }, 0);
-        
-        const totalEanChecked = references.reduce((total, ref) => {
-          return total + bookingQualityResults[ref].eanControl.checked.length;
-        }, 0);
-        
-        const totalEan = references.reduce((total, ref) => {
-          return total + bookingQualityResults[ref].eanControl.total;
-        }, 0);
-        
-        reportContent += `
-STATISTIQUES GLOBALES:
-- Total problèmes carton: ${totalPackageIssues}
-- Total problèmes produit: ${totalProductIssues}
-- Total EAN vérifiés: ${totalEanChecked}/${totalEan} (${Math.round((totalEanChecked / totalEan) * 100)}%)
-- Total photos: ${references.reduce((total, ref) => total + Object.values(bookingQualityResults[ref].photos).reduce((sum, photos) => sum + photos.length, 0), 0)}
-
-CONCLUSION:
-Booking ${totalPackageIssues + totalProductIssues === 0 ? '✅ CONFORME' : '⚠️ NON-CONFORME'} - Contrôle terminé
-        `;
-        
-        // Télécharger le rapport global
-        downloadTextFile(reportContent, `rapport_global_${currentBooking.number}_${new Date().toISOString().split('T')[0]}.txt`);
-        
-        window.NotificationManager.show("Rapport global généré avec succès!", 'success');
+        generateGlobalPDFReport();
+        window.NotificationManager.show("Rapport PDF global généré avec succès!", 'success');
       } catch (error) {
         console.error('Erreur génération rapport global:', error);
         window.NotificationManager.show("Erreur lors de la génération du rapport global", 'error');
       }
     }
 
-    function downloadTextFile(content, filename) {
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    function generateGlobalPDFReport() {
+      // Arrêter toutes les caméras en cours d'utilisation
+      if (window.isScanning) window.stopCamera();
+      if (window.isEanScanning) stopEanScanner();
+      
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      
+      let yPosition = 20;
+      const lineHeight = 8;
+      const sectionSpacing = 15;
+      const pageHeight = 270;
+      
+      // Couleurs exactes du premier fichier
+      const colors = {
+        primary: [102, 126, 234],
+        secondary: [118, 75, 162],
+        success: [40, 167, 69],
+        danger: [220, 53, 69],
+        warning: [255, 193, 7],
+        info: [23, 162, 184],
+        light: [248, 249, 250],
+        lightBlue: [224, 240, 255]
+      };
+      
+      // En-tête du document avec fond coloré
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.rect(10, 10, 190, 25, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont(undefined, 'bold');
+      doc.text('RAPPORT GLOBAL DE BOOKING', 20, 28);
+      
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition = 45;
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'normal');
+      doc.text('Date de generation: ' + new Date().toLocaleString('fr-FR'), 20, yPosition);
+      doc.text('Booking: ' + currentBooking.number, 120, yPosition);
+      
+      yPosition += sectionSpacing + 5;
+      
+      // Section 1: Résumé global du booking
+      doc.setFillColor(colors.lightBlue[0], colors.lightBlue[1], colors.lightBlue[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.text('RESUME GLOBAL DU BOOKING', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      const references = Object.keys(bookingQualityResults);
+      const totalReferences = bookingReferences.length;
+      const controlledReferences = references.length;
+      
+      const globalInfo = [
+        'Booking numero: ' + currentBooking.number,
+        'Total references dans le booking: ' + totalReferences,
+        'References controlees: ' + controlledReferences,
+        'Taux de couverture: ' + Math.round((controlledReferences / totalReferences) * 100) + '%'
+      ];
+      
+      globalInfo.forEach(info => {
+        doc.text(info, 20, yPosition);
+        yPosition += lineHeight;
+      });
+      
+      yPosition += sectionSpacing;
+      
+      // Section 2: Statistiques globales
+      if (yPosition > pageHeight - 80) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      doc.setFillColor(colors.success[0], colors.success[1], colors.success[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('STATISTIQUES GLOBALES', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      // Calcul des statistiques
+      const totalPackageIssues = references.reduce((total, ref) => {
+        return total + Object.values(bookingQualityResults[ref].packageQuality || {}).filter(q => q.status === 'not_ok').length;
+      }, 0);
+      
+      const totalProductIssues = references.reduce((total, ref) => {
+        return total + Object.values(bookingQualityResults[ref].productQuality || {}).filter(q => q.status === 'not_ok').length;
+      }, 0);
+      
+      const totalEanChecked = references.reduce((total, ref) => {
+        return total + (bookingQualityResults[ref].eanControl ? bookingQualityResults[ref].eanControl.checked.length : 0);
+      }, 0);
+      
+      const totalEan = references.reduce((total, ref) => {
+        return total + (bookingQualityResults[ref].eanControl ? bookingQualityResults[ref].eanControl.total : 0);
+      }, 0);
+      
+      const totalPhotos = references.reduce((total, ref) => {
+        return total + Object.values(bookingQualityResults[ref].photos || {}).reduce((sum, photos) => sum + photos.length, 0);
+      }, 0);
+      
+      const globalStats = [
+        'Total problemes carton: ' + totalPackageIssues,
+        'Total problemes produit: ' + totalProductIssues,
+        'Total EAN verifies: ' + totalEanChecked + '/' + totalEan + ' (' + Math.round((totalEanChecked / totalEan) * 100) + '%)',
+        'Total photos documentaires: ' + totalPhotos
+      ];
+      
+      globalStats.forEach(stat => {
+        doc.text(stat, 20, yPosition);
+        yPosition += lineHeight;
+      });
+      
+      yPosition += sectionSpacing;
+      
+      // Section 3: Détail par référence
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      doc.setFillColor(colors.info[0], colors.info[1], colors.info[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('DETAIL PAR REFERENCE', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      references.forEach((referenceKey, index) => {
+        const referenceData = bookingQualityResults[referenceKey];
+        
+        if (yPosition > pageHeight - 40) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        const packageIssues = Object.values(referenceData.packageQuality || {}).filter(q => q.status === 'not_ok').length;
+        const productIssues = Object.values(referenceData.productQuality || {}).filter(q => q.status === 'not_ok').length;
+        const eanVerificationRate = referenceData.eanControl ? 
+          Math.round((referenceData.eanControl.checked.length / referenceData.eanControl.total) * 100) : 0;
+        const refPhotos = Object.values(referenceData.photos || {}).reduce((total, photos) => total + photos.length, 0);
+        
+        // Statut de la référence
+        const totalIssues = packageIssues + productIssues;
+        const refStatus = totalIssues === 0 ? 'CONFORME' : 'NON CONFORME';
+        const statusColor = totalIssues === 0 ? colors.success : colors.danger;
+        
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.text((index + 1) + '. ' + referenceData.reference + ' (' + referenceData.product[COL_MARQUE] + ')', 20, yPosition);
+        yPosition += lineHeight + 2;
+        
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.text('   - Problemes carton: ' + packageIssues + '/3', 25, yPosition);
+        yPosition += 6;
+        doc.text('   - Problemes produit: ' + productIssues + '/4', 25, yPosition);
+        yPosition += 6;
+        doc.text('   - Verification EAN: ' + eanVerificationRate + '% (' + 
+                (referenceData.eanControl ? referenceData.eanControl.checked.length + '/' + referenceData.eanControl.total : '0/0') + ')', 25, yPosition);
+        yPosition += 6;
+        doc.text('   - Photos: ' + refPhotos, 25, yPosition);
+        yPosition += 6;
+        
+        // Statut avec couleur
+        doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+        doc.text('   - Statut: ' + refStatus, 25, yPosition);
+        doc.setTextColor(0, 0, 0);
+        yPosition += lineHeight + 5;
+      });
+      
+      yPosition += sectionSpacing;
+      
+      // Section 4: Conclusion globale
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      const globalQualityIssues = totalPackageIssues + totalProductIssues;
+      const bookingStatus = globalQualityIssues === 0 ? 'CONFORME' : 'NON CONFORME';
+      const conclusionColor = globalQualityIssues === 0 ? colors.success : colors.danger;
+      
+      doc.setFillColor(conclusionColor[0], conclusionColor[1], conclusionColor[2]);
+      doc.rect(15, yPosition - 8, 180, 15, 'F');
+      
+      doc.setFontSize(16);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('CONCLUSION GLOBALE', 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      
+      yPosition += 12;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'normal');
+      
+      // Statut du booking avec couleur
+      doc.setTextColor(conclusionColor[0], conclusionColor[1], conclusionColor[2]);
+      doc.text('Statut global du booking: ' + bookingStatus, 20, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += lineHeight;
+      
+      const completeness = controlledReferences === totalReferences ? 'COMPLET' : 'PARTIEL';
+      doc.text('Controle du booking: ' + completeness, 20, yPosition);
+      yPosition += lineHeight;
+      
+      // Conclusion finale
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      yPosition += 5;
+      
+      if (globalQualityIssues === 0 && completeness === 'COMPLET') {
+        doc.setTextColor(colors.success[0], colors.success[1], colors.success[2]);
+        doc.text('BOOKING VALIDE - Toutes les references sont conformes', 20, yPosition);
+      } else if (completeness === 'PARTIEL') {
+        doc.setTextColor(colors.warning[0], colors.warning[1], colors.warning[2]);
+        doc.text('BOOKING PARTIELLEMENT CONTROLE - Controle incomplet', 20, yPosition);
+      } else {
+        doc.setTextColor(colors.danger[0], colors.danger[1], colors.danger[2]);
+        doc.text('BOOKING AVEC RESERVES - ' + globalQualityIssues + ' probleme(s) detecte(s)', 20, yPosition);
+      }
+      doc.setTextColor(0, 0, 0);
+      
+      // Pied de page
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setFont(undefined, 'italic');
+        doc.setTextColor(100, 100, 100);
+        doc.text('Rapport global genere par Matrice Controle Qualite - Page ' + i + '/' + pageCount, 20, 285);
+        doc.text(new Date().toLocaleString('fr-FR'), 150, 285);
+      }
+      
+      // Génération du nom de fichier
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const filename = 'Rapport_Global_Booking_' + currentBooking.number + '_' + timestamp + '.pdf';
+      
+      // Téléchargement ou ouverture selon le device
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        window.open(doc.output('bloburl'));
+      } else {
+        const blob = doc.output('blob');
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }
     }
 
     function startNewBooking() {
@@ -3836,6 +4562,16 @@ Booking ${totalPackageIssues + totalProductIssues === 0 ? '✅ CONFORME' : '⚠�
       // Mise à jour du statut global
       updateGlobalStatus();
     });
+
+    // Empêcher le zoom sur double-tap (iOS)
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = (new Date()).getTime();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, false);
   </script>
 </body>
 </html>
