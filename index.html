@@ -27,12 +27,12 @@
     // 📊 Configuration pour le fichier de BDD (fichier CSV .csv)
     // ⚠️  Ces colonnes sont généralement fixes mais vous pouvez les ajuster si nécessaire
     
-    const COL_REF = 1;      // 📍 Colonne A = Référence produit
-    const COL_CODE = 0;     // 📍 Colonne B = Code article  
-    const COL_COULEUR = 2;  // 📍 Colonne C = Couleur
-    const COL_TAILLE = 3;   // 📍 Colonne E = Taille
-    const COL_MARQUE = 5;   // 📍 Colonne H = Marque
-    const COL_EAN = 4;     // 📍 Colonne K = Code EAN
+    const COL_REF = 2;      // 📍 Colonne A = Référence produit
+    const COL_CODE = 1;     // 📍 Colonne B = Code article  
+    const COL_COULEUR = 5;  // 📍 Colonne C = Couleur
+    const COL_TAILLE = 6;   // 📍 Colonne E = Taille
+    const COL_MARQUE = 11;   // 📍 Colonne H = Marque
+    const COL_EAN = 7;     // 📍 Colonne K = Code EAN
     
     // ================================================================================================
     // 🔚 FIN DE LA CONFIGURATION - Ne modifiez pas le code en dessous sauf si nécessaire
@@ -2018,11 +2018,11 @@
         throw new Error(`Aucune donnée ${type} trouvée`);
       }
       
-      if (type === 'csv' && data[0].length < 6) {
+      if (type === 'csv' && data[0].length < 7) {
         throw new Error('Le fichier CSV ne contient pas assez de colonnes');
       }
       
-      if (type === 'booking' && data[0].length < 2) {
+      if (type === 'booking' && data[0].length < 3) {
         throw new Error('Le fichier booking ne contient pas assez de colonnes');
       }
       
